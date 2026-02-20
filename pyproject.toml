@@ -1,0 +1,36 @@
+[tool.pylint.master]
+fail-under = 9.5
+
+[tool.pylint.messages_control]
+disable = [
+    "C0114", # missing-module-docstring
+    "C0116", # missing-function-docstring
+    "C0115", # missing-class-docstring
+    "C0103", # invalid-name
+    "E0401", # import-error (for hardware libs like RPi.GPIO)
+    "W0603", # global-statement
+    "R0902", # too-many-instance-attributes
+    "R0912", # too-many-branches
+    "R0913", # too-many-arguments
+    "R0914", # too-many-locals
+    "R0915", # too-many-statements
+    "C0321", # multiple-statements
+    "R0801", # duplicate-code
+    "R0401", # cyclic-import
+    "W0718", # broad-exception-caught
+    "W0621", # redefined-outer-name
+    "R0917", # too-many-positional-arguments
+    "C0415", # import-outside-toplevel
+    "W0702", # bare-except
+    "W0611", # unused-import
+    "W0612", # unused-variable
+    "R1705", # no-else-return
+    "R0903", # too-few-public-methods
+]
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint.typecheck]
+# List of members which are set dynamically and missed by pylint inference system
+generated-members = ["cv2.*", "numpy.*"]
