@@ -207,6 +207,8 @@ class CameraState:
         self.focus       = 128            # mid-point default
         self.focus_max   = FOCUS_MAX      # updated at runtime
         self.focus_peaking = False        # highlight in-focus edges
+        self.show_guides = True           # framing guides toggle
+        self.show_histogram = False       # live histogram toggle
         self.output_format_idx = DEFAULT_FORMAT_IDX  # index into OUTPUT_FORMATS
         self.recording   = False
         self.rec_start   = None
@@ -694,9 +696,7 @@ def run_gui(state: CameraState, hat=None):
     AMBER  = (0, 165, 255)
 
     show_help      = False
-    show_peaking   = False
-    show_guides    = True
-    show_histogram = False
+    # show_peaking, show_guides, show_histogram are now in state
     format_menu_timer = 0.0
     blink_state    = True
     blink_timer    = time.time()
@@ -767,8 +767,8 @@ def run_gui(state: CameraState, hat=None):
             gray = cv2.cvtColor(display, cv2.COLOR_BGR2GRAY)
 
         # ── Focus Peaking overlay (before all HUD text) ──
-        if show_peaking and NP_OK:
-            display = _apply_focus_peaking(display, gray=gray)
+        if state.focus_peaking and NP_OK:
+            display = _apply_focus_peaking(display)
 
         # ── Tally Border (Recording Indicator) ──
         if state.recording:
@@ -820,15 +820,15 @@ def run_gui(state: CameraState, hat=None):
 
         # Focus pull bar (shown when in manual focus)
         if not state.auto_focus:
-            _draw_focus_bar(display, PW, PH, state.focus_pct, show_peaking)
+            _draw_focus_bar(display, PW, PH, state.focus_pct, state.focus_peaking)
 
         # Framing guides
-        if show_guides:
+        if state.show_guides:
             _draw_guides(display, PW, PH)
 
         # Live Histogram
-        if show_histogram:
-            _draw_histogram(display, PW, PH, gray=gray)
+        if state.show_histogram:
+            _draw_histogram(display, PW, PH)
 
         # Format Menu
         if time.time() - format_menu_timer < 3.0:
@@ -919,11 +919,11 @@ def run_gui(state: CameraState, hat=None):
                 state.focus = max(state.focus - FOCUS_STEP_FINE, FOCUS_MIN)
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
         elif key == ord('k'):                # K = toggle focus peaking
-            show_peaking = not show_peaking
+            state.focus_peaking = not state.focus_peaking
         elif key == ord('l'):                # L = toggle guides
-            show_guides = not show_guides
+            state.show_guides = not state.show_guides
         elif key == ord('j'):                # J = toggle histogram
-            show_histogram = not show_histogram
+            state.show_histogram = not state.show_histogram
 
         # Audio
         elif key == ord('m'):                # M = mute/unmute mic
