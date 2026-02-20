@@ -738,6 +738,19 @@ def run_gui(state: CameraState, hat=None):
     storage_timer  = 0.0
     storage_info   = (0, 0)  # free_gb, mins
 
+    # Toast state
+    toast_msg = "Press 'H' for Help"
+    toast_timer = time.time()
+    toast_duration = 5.0
+    toast_color = COLOR_WHITE
+
+    def show_toast(msg, color=COLOR_WHITE, duration=2.0):
+        nonlocal toast_msg, toast_timer, toast_duration, toast_color
+        toast_msg = msg
+        toast_color = color
+        toast_timer = time.time()
+        toast_duration = duration
+
     cv2.namedWindow("ObsBot CineRig", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("ObsBot CineRig", PW, PH)
 
@@ -896,6 +909,10 @@ def run_gui(state: CameraState, hat=None):
         if show_help:
             _draw_help(display, PW, PH, FONT)
 
+        # Toast Message
+        if time.time() - toast_timer < toast_duration:
+            _draw_toast(display, PW, PH, toast_msg, toast_color)
+
         cv2.imshow("ObsBot CineRig", display)
 
         key = cv2.waitKey(1) & 0xFF
@@ -944,14 +961,20 @@ def run_gui(state: CameraState, hat=None):
             state.auto_exp = not state.auto_exp
             val = 3 if state.auto_exp else 1
             v4l2_set(state.device, V4L2_EXPOSURE_AUTO, val)
+            show_toast("AUTO EXPOSURE" if state.auto_exp else "MANUAL EXP",
+                       COLOR_GREEN if state.auto_exp else COLOR_AMBER)
         elif key == ord('b'):
             state.auto_wb = not state.auto_wb
             v4l2_set(state.device, V4L2_WB_AUTO, 1 if state.auto_wb else 0)
+            show_toast("AUTO WB" if state.auto_wb else "MANUAL WB",
+                       COLOR_GREEN if state.auto_wb else COLOR_AMBER)
 
         # Focus
         elif key == ord('t'):                # T = toggle autofocus
             state.auto_focus = not state.auto_focus
             v4l2_set(state.device, V4L2_FOCUS_AUTO, 1 if state.auto_focus else 0)
+            show_toast("AUTOFOCUS" if state.auto_focus else "MANUAL FOCUS",
+                       COLOR_GREEN if state.auto_focus else COLOR_AMBER)
             if not state.auto_focus:         # seed manual position from camera
                 current = v4l2_get(state.device, V4L2_FOCUS_ABS)
                 if current is not None:
@@ -974,14 +997,22 @@ def run_gui(state: CameraState, hat=None):
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
         elif key == ord('k'):                # K = toggle focus peaking
             state.focus_peaking = not state.focus_peaking
+            show_toast("PEAKING ON" if state.focus_peaking else "PEAKING OFF",
+                       COLOR_GREEN if state.focus_peaking else COLOR_RED)
         elif key == ord('l'):                # L = toggle guides
             state.show_guides = not state.show_guides
+            show_toast("GUIDES ON" if state.show_guides else "GUIDES OFF",
+                       COLOR_GREEN if state.show_guides else COLOR_RED)
         elif key == ord('j'):                # J = toggle histogram
             state.show_histogram = not state.show_histogram
+            show_toast("HISTOGRAM ON" if state.show_histogram else "HISTOGRAM OFF",
+                       COLOR_GREEN if state.show_histogram else COLOR_RED)
 
         # Audio
         elif key == ord('m'):                # M = mute/unmute mic
             state.audio_muted = not state.audio_muted
+            show_toast("MIC MUTED" if state.audio_muted else "MIC LIVE",
+                       COLOR_RED if state.audio_muted else COLOR_GREEN)
         elif key == ord('+') or key == ord('='):   # + = mic gain up
             state.mic_gain_db = min(state.mic_gain_db + 3, 20)
         elif key == ord('-'):                # - = mic gain down
@@ -1000,6 +1031,30 @@ def run_gui(state: CameraState, hat=None):
     state.save_config()
     cap.release()
     cv2.destroyAllWindows()
+
+
+def _draw_toast(img, w, h, text, color):
+    """Draw a temporary message in the center of the screen."""
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 1.0
+    thickness = 2
+    (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
+
+    # Center position (slightly above center to avoid covering subject)
+    cx, cy = w // 2, h // 2 - 50
+
+    # Background box
+    pad_x, pad_y = 30, 15
+    x1, y1 = cx - tw // 2 - pad_x, cy - th // 2 - pad_y
+    x2, y2 = cx + tw // 2 + pad_x, cy + th // 2 + pad_y
+
+    # Draw semi-transparent background
+    overlay = img.copy()
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
+
+    # Draw text
+    cv2.putText(img, text, (cx - tw // 2, cy + th // 2), font, scale, color, thickness, cv2.LINE_AA)
 
 
 def _shadow_text(img, text, pos, font, scale, color, thickness=1):
