@@ -172,11 +172,26 @@ class ST7735S:
             img = img.resize((LCD_W, LCD_H))
         self.set_window(0, 0, LCD_W-1, LCD_H-1)
         px  = img.convert("RGB").tobytes()
-        buf = bytearray(LCD_W * LCD_H * 2)
-        for i in range(LCD_W * LCD_H):
-            r=px[i*3]; g=px[i*3+1]; b=px[i*3+2]
-            v=_rgb565(r,g,b)
-            buf[i*2]=(v>>8)&0xFF; buf[i*2+1]=v&0xFF
+
+        if NP_OK:
+            # Vectorized numpy implementation (approx 100x faster)
+            arr = np.frombuffer(px, dtype=np.uint8).reshape(-1, 3)
+            r = arr[:, 0].astype(np.uint16)
+            g = arr[:, 1].astype(np.uint16)
+            b = arr[:, 2].astype(np.uint16)
+            v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+            # Big Endian: High byte first
+            res = np.empty((arr.shape[0], 2), dtype=np.uint8)
+            res[:, 0] = (v >> 8).astype(np.uint8)
+            res[:, 1] = (v & 0xFF).astype(np.uint8)
+            buf = res.tobytes()
+        else:
+            buf = bytearray(LCD_W * LCD_H * 2)
+            for i in range(LCD_W * LCD_H):
+                r=px[i*3]; g=px[i*3+1]; b=px[i*3+2]
+                v=_rgb565(r,g,b)
+                buf[i*2]=(v>>8)&0xFF; buf[i*2+1]=v&0xFF
+
         GPIO.output(PIN_DC, 1)
         for i in range(0, len(buf), 4096):
             self.spi.writebytes(list(buf[i:i+4096]))
