@@ -6,6 +6,14 @@ live audio metering, and a **Waveshare 1.44" LCD HAT** viewfinder.
 
 ---
 
+## Hardware Requirements
+
+- **Raspberry Pi 5** (Required for 4K encoding performance)
+- **OBSBOT Meet 2** (4K Webcam)
+- **Waveshare 1.44" LCD HAT** (GPIO/SPI Interface)
+
+---
+
 ## Files
 
 | File | Purpose |
@@ -14,6 +22,12 @@ live audio metering, and a **Waveshare 1.44" LCD HAT** viewfinder.
 | `hat_ui.py` | Waveshare HAT viewfinder — 8-page cinema monitor + live feed |
 | `install.sh` | One-time dependency installer |
 | `README.md` | This file |
+
+## Architecture
+
+- **`obsbot_capture.py`**: Core logic, FFmpeg process management, and OpenCV GUI. Handles `CameraState` which stores all settings.
+- **`hat_ui.py`**: Runs in a separate thread, handling the LCD display (SPI) and joystick input (GPIO). It reads from and updates the shared `CameraState`.
+- **`install.sh`**: One-time setup script for dependencies and system configuration.
 
 ---
 
@@ -35,6 +49,15 @@ python3 obsbot_capture.py --mode gui --hat                # Both
 # 4. Test HAT display standalone
 python3 hat_ui.py
 ```
+
+### Installation Details
+
+The `install.sh` script performs the following critical system changes:
+
+1. **USB Bandwidth:** Adds `usbcore.usbfs_memory_mb=512` to `/boot/firmware/cmdline.txt` (Required for 4K video).
+2. **SPI Interface:** Enables SPI (`dtparam=spi=on`) in `/boot/firmware/config.txt`.
+3. **GPIO Pull-ups:** Configures pull-ups for the HAT buttons and joystick in `/boot/firmware/config.txt`.
+4. **Dependencies:** Installs `ffmpeg`, `v4l-utils`, and Python libraries (`rich`, `spidev`, `sounddevice`, `lgpio`, `Pillow`).
 
 ---
 
