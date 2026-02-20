@@ -207,9 +207,9 @@ C_BAR_BG  = (25,  25,  40)
 C_TOPBAR  = (18,  18,  30)
 C_OVERLAY = (0,   0,   0,  160)   # RGBA — used for semi-transparent overlay panels
 
-PAGES = ["LIVE", "STATUS", "EXPOSURE", "WHITE BAL", "FOCUS", "AUDIO", "FORMAT", "STORAGE"]
+PAGES = ["LIVE", "STATUS", "EXPOSURE", "WHITE BAL", "FOCUS", "DISPLAY", "AUDIO", "FORMAT", "STORAGE"]
 N_PAGES = len(PAGES)
-PAGE_COLORS = [C_RED, C_WHITE, C_AMBER, C_CYAN, C_GREEN, C_GREEN, C_MAGENTA, C_LGRAY]
+PAGE_COLORS = [C_RED, C_WHITE, C_AMBER, C_CYAN, C_GREEN, C_CYAN, C_GREEN, C_MAGENTA, C_LGRAY]
 
 
 # ─────────────────────────────────────────────
@@ -595,6 +595,17 @@ class HatUI:
                     cur = oc.v4l2_get(dev, oc.V4L2_FOCUS_ABS)
                     if cur is not None: s.focus = cur
             self.flash("AF  ON" if s.auto_focus else "MF", C_GREEN)
+        elif page == "DISPLAY":
+            # KEY2 on DISPLAY page toggles the selected item
+            if self._sub == 0:
+                s.show_guides = not getattr(s, 'show_guides', True)
+                self.flash("GUIDES " + ("ON" if s.show_guides else "OFF"), C_CYAN)
+            elif self._sub == 1:
+                s.show_histogram = not getattr(s, 'show_histogram', False)
+                self.flash("HISTO " + ("ON" if s.show_histogram else "OFF"), C_CYAN)
+            elif self._sub == 2:
+                s.focus_peaking = not getattr(s, 'focus_peaking', False)
+                self.flash("PEAK " + ("ON" if s.focus_peaking else "OFF"), C_CYAN)
         elif page == "AUDIO":
             s.audio_muted = not s.audio_muted
             self.flash("MUTED" if s.audio_muted else "MIC ON",
@@ -625,6 +636,9 @@ class HatUI:
         elif page == "FOCUS":
             s.focus_peaking = not getattr(s, 'focus_peaking', False)
             self.flash("PEAK ON" if s.focus_peaking else "PEAK OFF", C_GREEN)
+        elif page == "DISPLAY":
+            # KEY3 cycles selection
+            self._sub = (self._sub + 1) % 3
         elif page == "AUDIO":
             s.mic_gain_db = 0
             self.flash("GAIN  0dB", C_GREEN)
@@ -660,6 +674,10 @@ class HatUI:
             step = oc.FOCUS_STEP_COARSE
             s.focus = max(oc.FOCUS_MIN, min(s.focus_max, s.focus + direction*step))
             oc.v4l2_set(dev, oc.V4L2_FOCUS_ABS, s.focus)
+        elif page == "DISPLAY":
+            # JOY UP/DOWN changes selection
+            if direction > 0: self._sub = (self._sub + 1) % 3
+            else:             self._sub = (self._sub - 1) % 3
         elif page == "AUDIO":
             s.mic_gain_db = max(-20, min(20, s.mic_gain_db + direction*3))
         elif page == "FORMAT":
@@ -692,6 +710,17 @@ class HatUI:
                 if cur: s.focus = cur
                 s.auto_focus = False
             self.flash("FOCUS LOCK", C_GREEN)
+        elif page == "DISPLAY":
+             # JOY PRESS toggles selected item
+            if self._sub == 0:
+                s.show_guides = not getattr(s, 'show_guides', True)
+                self.flash("GUIDES " + ("ON" if s.show_guides else "OFF"), C_CYAN)
+            elif self._sub == 1:
+                s.show_histogram = not getattr(s, 'show_histogram', False)
+                self.flash("HISTO " + ("ON" if s.show_histogram else "OFF"), C_CYAN)
+            elif self._sub == 2:
+                s.focus_peaking = not getattr(s, 'focus_peaking', False)
+                self.flash("PEAK " + ("ON" if s.focus_peaking else "OFF"), C_CYAN)
         elif page == "AUDIO":
             s.audio_muted = not s.audio_muted
             self.flash("MUTED" if s.audio_muted else "MIC ON",
@@ -832,6 +861,7 @@ class HatUI:
             "EXPOSURE": self._pg_exposure,
             "WHITE BAL":self._pg_wb,
             "FOCUS":    self._pg_focus,
+            "DISPLAY":  self._pg_display,
             "AUDIO":    self._pg_audio,
             "FORMAT":   self._pg_format,
             "STORAGE":  self._pg_storage,
@@ -972,6 +1002,31 @@ class HatUI:
                   fill=C_GREEN if pk_on else C_MGRAY, font=xs)
         draw.text((3, LCD_H-22), "▲▼ = pull focus", fill=C_GREEN if not s.auto_focus else C_MGRAY, font=xs)
         draw.text((3, LCD_H-13), "K2=AF  K3=peak  ●=AF lock", fill=C_MGRAY, font=xs)
+
+    def _pg_display(self, draw, s):
+        y  = 20; xs = self._font_xs; sm = self._font_sm
+        draw.text((3,y), "GUI DISPLAY", fill=C_CYAN, font=sm); y+=16
+
+        items = [
+            ("Guides",    getattr(s, 'show_guides', True)),
+            ("Histogram", getattr(s, 'show_histogram', False)),
+            ("Peaking",   getattr(s, 'focus_peaking', False))
+        ]
+
+        for i, (label, val) in enumerate(items):
+            selected = (i == self._sub)
+            col = C_WHITE if selected else C_MGRAY
+            prefix = "▶ " if selected else "  "
+            status = "ON" if val else "OFF"
+            stat_col = C_GREEN if val else C_RED_DIM
+            if selected: stat_col = C_GREEN if val else C_RED
+
+            draw.text((3, y), f"{prefix}{label}", fill=col, font=sm)
+            draw.text((LCD_W-36, y), status, fill=stat_col, font=sm)
+            y += 16
+
+        draw.text((3, LCD_H-22), "▲▼ = select", fill=C_MGRAY, font=xs)
+        draw.text((3, LCD_H-13), "K2/● = toggle  K3=next", fill=C_MGRAY, font=xs)
 
     def _pg_audio(self, draw, s):
         y  = 20; xs = self._font_xs; sm = self._font_sm

@@ -85,6 +85,8 @@ Available `--format` values: `h264_high`, `h264_std`, `h265`, `mkv_h264`,
 | **] / [** | Focus far / near (coarse) |
 | **. / ,** | Focus far / near (fine) |
 | **K** | Toggle focus peaking |
+| **L** | Toggle framing guides |
+| **J** | Toggle live histogram |
 | **M** | Mute / unmute mic |
 | **+ / -** | Mic gain ±3 dB |
 | **H** | Toggle help overlay (GUI only) |
@@ -92,7 +94,7 @@ Available `--format` values: `h264_high`, `h264_std`, `h265`, `mkv_h264`,
 
 ---
 
-## HAT Viewfinder — 8 Pages
+## HAT Viewfinder — 9 Pages
 
 **JOY ←/→** navigates pages. **JOY ↑/↓** adjusts. **KEY1** always records.
 
@@ -103,9 +105,16 @@ Available `--format` values: `h264_high`, `h264_std`, `h265`, `mkv_h264`,
 | **EXPOSURE** | Shutter or ISO | Toggle AE | Switch shutter↔ISO | — |
 | **WHITE BAL** | Kelvin ±100 | Toggle AWB | Jump WB preset | One-shot AWB lock |
 | **FOCUS** | Pull focus | Toggle AF/MF | Toggle peaking | One-shot AF lock |
+| **DISPLAY** | Select item | Toggle item | Cycle selection | Toggle item |
 | **AUDIO** | Mic gain ±3dB | Mute | Reset gain to 0 | Mute toggle |
 | **FORMAT** | Cycle all formats | Cycle format | Cycle resolution | Cycle FPS |
 | **STORAGE** | — | — | Reset clip # | Clip info |
+
+### DISPLAY Page
+Use this page to toggle HDMI/GUI overlays:
+- **Guides:** Rule-of-thirds & crosshair
+- **Histogram:** Live luminance histogram
+- **Peaking:** Focus peaking (red edges)
 
 ### LIVE Page — KEY3 toggles HUD
 - **HUD ON:** timecode · REC dot · focus bar · L/R audio meters · settings summary
