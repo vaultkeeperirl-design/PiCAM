@@ -796,6 +796,11 @@ def run_gui(state: CameraState, hat=None):
         # Scale for display
         display = cv2.resize(frame, (PW, PH), interpolation=cv2.INTER_LINEAR)
 
+        # Compute grayscale once if needed
+        gray = None
+        if (show_peaking or show_histogram) and CV2_OK:
+            gray = cv2.cvtColor(display, cv2.COLOR_BGR2GRAY)
+
         # ── Focus Peaking overlay (before all HUD text) ──
         if state.focus_peaking and NP_OK:
             display = _apply_focus_peaking(display)
@@ -1001,18 +1006,35 @@ def _shadow_text(img, text, pos, font, scale, color, thickness=1):
     cv2.putText(img, text, pos, font, scale, color, thickness, cv2.LINE_AA)
 
 
-def _apply_focus_peaking(frame):
+def _apply_focus_peaking(frame, gray=None):
     """
     Highlight in-focus edges with a red overlay (focus peaking).
     Uses Laplacian edge detection — bright red = sharpest areas.
     """
-    gray    = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    lap     = cv2.Laplacian(gray, cv2.CV_64F)
-    lap_abs = np.abs(lap).astype(np.uint8)
+    if gray is None:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # Threshold: top ~15% of edge strength
-    threshold = np.percentile(lap_abs, 85)
-    mask = (lap_abs > threshold).astype(np.uint8)
+    # Use CV_16S (signed 16-bit) to save memory (vs CV_64F) and convertScaleAbs to handle saturation correctly
+    lap     = cv2.Laplacian(gray, cv2.CV_16S)
+    lap_abs = cv2.convertScaleAbs(lap)
+
+    # Use Histogram to find percentile (O(N) vs O(N log N) sorting)
+    hist = cv2.calcHist([lap_abs], [0], None, [256], [0, 256])
+
+    total_pixels = frame.shape[0] * frame.shape[1]
+    target_count = total_pixels * 0.15
+    current_count = 0
+    threshold = 0
+
+    # Iterate backwards from 255 to find the top 15% threshold
+    for i in range(255, -1, -1):
+        current_count += hist[i][0]
+        if current_count >= target_count:
+            threshold = i
+            break
+
+    # Apply threshold
+    _, mask = cv2.threshold(lap_abs, threshold, 255, cv2.THRESH_BINARY)
 
     # Dilate slightly so peaking pixels are visible
     kernel = np.ones((2, 2), np.uint8)
@@ -1020,7 +1042,7 @@ def _apply_focus_peaking(frame):
 
     # Blend red highlight onto frame
     peak_layer       = np.zeros_like(frame)
-    peak_layer[:, :, 2] = mask * 255   # red channel only
+    peak_layer[:, :, 2] = mask   # mask is already 0 or 255 (uint8)
 
     result = cv2.addWeighted(frame, 1.0, peak_layer, 0.6, 0)
     return result
@@ -1151,10 +1173,11 @@ def _draw_guides(img, w, h):
     cv2.addWeighted(overlay, alpha, img, 1-alpha, 0, img)
 
 
-def _draw_histogram(img, w, h):
+def _draw_histogram(img, w, h, gray=None):
     """Draw a small luminance histogram in the bottom-right corner."""
     # Compute histogram for the whole image (luminance approximation)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    if gray is None:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
 
     # Normalize
