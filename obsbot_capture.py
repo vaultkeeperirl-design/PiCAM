@@ -800,7 +800,7 @@ def run_gui(state: CameraState, hat=None):
 
         # Compute grayscale once if needed
         gray = None
-        if (show_peaking or show_histogram) and CV2_OK:
+        if (state.focus_peaking or state.show_histogram) and CV2_OK:
             gray = cv2.cvtColor(display, cv2.COLOR_BGR2GRAY)
 
         # ── Focus Peaking overlay (before all HUD text) ──
@@ -829,14 +829,14 @@ def run_gui(state: CameraState, hat=None):
         # Top-right: format label + remaining time
         profile_label = state.format_label
         mins_left = storage_info[1]
-        label_col = AMBER
+        label_col = COLOR_AMBER
 
         if mins_left > 0:
             h, m = divmod(mins_left, 60)
             time_str = f"{h}h {m:02d}m"
             profile_label = f"{profile_label}  {time_str}"
             if mins_left < 10:
-                label_col = RED  # Warn low space
+                label_col = COLOR_RED  # Warn low space
 
         (tw, th), _ = cv2.getTextSize(profile_label, FONT, 0.55, 1)
         # Right-align with 20px margin

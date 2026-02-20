@@ -38,11 +38,7 @@ echo -e "${CYAN}[2/4] Installing Python packages…${RESET}"
 sudo apt-get remove -y python3-rpi.gpio 2>/dev/null || true
 sudo apt-get install -y python3-rpi-lgpio python3-lgpio
 
-pip3 install --break-system-packages rich sounddevice spidev Pillow
-
-# If system opencv didn't work, also try pip
-python3 -c "import cv2" 2>/dev/null || \
-    pip3 install --break-system-packages opencv-python-headless
+pip3 install --break-system-packages -r requirements.txt
 
 # ── USB bandwidth for 4K UVC ─────────────────────────────────
 echo -e "${CYAN}[3/4] Configuring USB and SPI…${RESET}"

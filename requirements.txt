@@ -1,0 +1,6 @@
+rich
+sounddevice
+spidev
+Pillow
+numpy
+opencv-python-headless

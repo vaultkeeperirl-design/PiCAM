@@ -1,0 +1,23 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev portaudio19-dev
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pylint
+      - name: Lint with pylint
+        run: |
+          pylint obsbot_capture.py hat_ui.py
