@@ -693,10 +693,13 @@ def run_gui(state: CameraState, hat=None):
     GREEN  = (50, 220, 50)
     AMBER  = (0, 165, 255)
 
-    show_help    = False
-    show_peaking = False
-    blink_state  = True
-    blink_timer  = time.time()
+    show_help      = False
+    show_peaking   = False
+    show_guides    = True
+    show_histogram = False
+    format_menu_timer = 0.0
+    blink_state    = True
+    blink_timer    = time.time()
 
     cv2.namedWindow("ObsBot CineRig", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("ObsBot CineRig", PW, PH)
@@ -762,6 +765,10 @@ def run_gui(state: CameraState, hat=None):
         if show_peaking and NP_OK:
             display = _apply_focus_peaking(display)
 
+        # ── Tally Border (Recording Indicator) ──
+        if state.recording:
+            cv2.rectangle(display, (0, 0), (PW - 1, PH - 1), RED, 10)
+
         # ── Blink REC dot every 0.5s ──
         if time.time() - blink_timer > 0.5:
             blink_state = not blink_state
@@ -811,7 +818,16 @@ def run_gui(state: CameraState, hat=None):
             _draw_focus_bar(display, PW, PH, state.focus_pct, show_peaking)
 
         # Framing guides
-        _draw_guides(display, PW, PH)
+        if show_guides:
+            _draw_guides(display, PW, PH)
+
+        # Live Histogram
+        if show_histogram:
+            _draw_histogram(display, PW, PH)
+
+        # Format Menu
+        if time.time() - format_menu_timer < 3.0:
+            _draw_format_menu(display, PW, PH, state)
 
         # Audio meters (left side, vertical)
         if state.audio_enabled:
@@ -899,6 +915,10 @@ def run_gui(state: CameraState, hat=None):
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
         elif key == ord('k'):                # K = toggle focus peaking
             show_peaking = not show_peaking
+        elif key == ord('l'):                # L = toggle guides
+            show_guides = not show_guides
+        elif key == ord('j'):                # J = toggle histogram
+            show_histogram = not show_histogram
 
         # Audio
         elif key == ord('m'):                # M = mute/unmute mic
@@ -911,6 +931,7 @@ def run_gui(state: CameraState, hat=None):
         # Output format cycle
         elif key == ord('p'):
             state.output_format_idx = (state.output_format_idx + 1) % N_FORMATS
+            format_menu_timer = time.time()
             fmt = state.output_format
             print(f"[FORMAT] → {fmt['label']}  ({fmt['note']})")
 
@@ -1078,6 +1099,56 @@ def _draw_guides(img, w, h):
     cv2.addWeighted(overlay, alpha, img, 1-alpha, 0, img)
 
 
+def _draw_histogram(img, w, h):
+    """Draw a small luminance histogram in the bottom-right corner."""
+    # Compute histogram for the whole image (luminance approximation)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
+
+    # Normalize
+    cv2.normalize(hist, hist, 0, 100, cv2.NORM_MINMAX)
+
+    # Draw parameters
+    hist_w = 256
+    hist_h = 100
+    margin = 20
+
+    # Position: Bottom Right, above the bottom bar
+    x_offset = w - hist_w - margin
+    y_offset = h - hist_h - 50
+
+    # Create a semi-transparent overlay
+    overlay = img.copy()
+    cv2.rectangle(overlay, (x_offset, y_offset), (x_offset + hist_w, y_offset + hist_h), (0, 0, 0), -1)
+
+    # Draw histogram lines
+    for i in range(256):
+        val = int(hist[i][0])
+        # Line from bottom up
+        cv2.line(overlay, (x_offset + i, y_offset + hist_h), (x_offset + i, y_offset + hist_h - val), (200, 200, 200), 1)
+
+    cv2.addWeighted(overlay, 0.6, img, 0.4, 0, img)
+
+
+def _draw_format_menu(img, w, h, state):
+    """Draw a centered list of formats, highlighting the selected one."""
+    menu_w = 300
+    menu_h = len(OUTPUT_FORMATS) * 30 + 20
+    x = (w - menu_w) // 2
+    y = (h - menu_h) // 2
+
+    overlay = img.copy()
+    cv2.rectangle(overlay, (x, y), (x + menu_w, y + menu_h), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.8, img, 0.2, 0, img)
+
+    FONT = cv2.FONT_HERSHEY_SIMPLEX
+    for i, fmt in enumerate(OUTPUT_FORMATS):
+        color = (0, 255, 0) if i == state.output_format_idx else (180, 180, 180)
+        thickness = 2 if i == state.output_format_idx else 1
+        text = fmt["label"]
+        cv2.putText(img, text, (x + 20, y + 30 * (i + 1)), FONT, 0.7, color, thickness, cv2.LINE_AA)
+
+
 def _draw_help(img, w, h, font):
     """Overlay keyboard shortcut reference."""
     help_lines = [
@@ -1091,6 +1162,8 @@ def _draw_help(img, w, h, font):
         "] / [      Focus Far / Near  (coarse)",
         ". / ,      Focus Far / Near  (fine)",
         "K          Toggle Focus Peaking",
+        "L          Toggle Framing Guides",
+        "J          Toggle Histogram",
         "M          Mute / Unmute mic",
         "+ / -      Mic gain +3 / -3 dB",
         "P          Cycle output format (H.264/H.265/ProRes…)",
