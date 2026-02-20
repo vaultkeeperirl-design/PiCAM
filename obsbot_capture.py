@@ -293,6 +293,39 @@ class CameraState:
         """Focus position as 0–100 percentage of range."""
         return int((self.focus / max(self.focus_max, 1)) * 100)
 
+    @property
+    def remaining_storage_info(self):
+        """Returns tuple (free_gb, remaining_minutes) or (0, 0) on error."""
+        try:
+            if not self.output_dir.exists():
+                return (0, 0)
+
+            # Use shutil for cross-platform disk usage
+            import shutil
+            total, used, free = shutil.disk_usage(str(self.output_dir))
+            free_gb = free / (1024**3)
+
+            # Estimate bitrate from format note
+            fmt  = self.output_format
+            note = fmt.get("note", "")
+            try:
+                # Extract numeric part from "~50Mbps"
+                mbps = int([w for w in note.replace("~", "").split() if "Mbps" in w][0].replace("Mbps", ""))
+            except Exception:
+                mbps = 50 # Default safe fallback
+
+            # Adjust for resolution (simple heuristic)
+            if "1280x720" in str(self.resolution):
+                mbps = max(1, mbps // 3)
+            elif "1920x1080" in str(self.resolution):
+                mbps = max(1, mbps // 2)
+
+            # Calculate minutes: (GB * 8000 / Mbps) / 60
+            mins = int((free_gb * 8000 / mbps) / 60) if mbps else 0
+            return (free_gb, mins)
+        except Exception:
+            return (0, 0)
+
 # ─────────────────────────────────────────────
 #  V4L2 Control Layer
 # ─────────────────────────────────────────────
@@ -700,6 +733,8 @@ def run_gui(state: CameraState, hat=None):
     format_menu_timer = 0.0
     blink_state    = True
     blink_timer    = time.time()
+    storage_timer  = 0.0
+    storage_info   = (0, 0)  # free_gb, mins
 
     cv2.namedWindow("ObsBot CineRig", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("ObsBot CineRig", PW, PH)
@@ -779,10 +814,27 @@ def run_gui(state: CameraState, hat=None):
         res_str = f"{actual_w}×{actual_h}  {state.fps}fps"
         _shadow_text(display, res_str, (14, 30), FONT, 0.55, WHITE)
 
-        # Top-right: format label
+        # ── Update Storage Info (every 2s) ──
+        if time.time() - storage_timer > 2.0:
+            storage_info = state.remaining_storage_info
+            storage_timer = time.time()
+
+        # Top-right: format label + remaining time
         profile_label = state.format_label
-        tw, _ = cv2.getTextSize(profile_label, FONT, 0.55, 1)[0], 0
-        _shadow_text(display, profile_label, (PW - 160, 30), FONT, 0.55, AMBER)
+        mins_left = storage_info[1]
+        label_col = AMBER
+
+        if mins_left > 0:
+            h, m = divmod(mins_left, 60)
+            time_str = f"{h}h {m:02d}m"
+            profile_label = f"{profile_label}  {time_str}"
+            if mins_left < 10:
+                label_col = RED  # Warn low space
+
+        (tw, th), _ = cv2.getTextSize(profile_label, FONT, 0.55, 1)
+        # Right-align with 20px margin
+        tx = PW - tw - 20
+        _shadow_text(display, profile_label, (tx, 30), FONT, 0.55, label_col)
 
         # Centre-top: REC indicator
         if state.recording:
