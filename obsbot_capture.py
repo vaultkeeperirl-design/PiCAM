@@ -260,7 +260,17 @@ class CameraState:
             "auto_focus":        self.auto_focus,
             "mic_gain_db":       self.mic_gain_db,
         }
-        CONFIG_FILE.write_text(json.dumps(data, indent=2))
+        try:
+            # Atomic write pattern with restrictive permissions (0o600)
+            tmp_path = str(CONFIG_FILE) + ".tmp"
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'w') as f:
+                json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(fd)
+            os.replace(tmp_path, CONFIG_FILE)
+        except OSError as e:
+            print(f"[WARN] Failed to save config: {e}")
 
     @property
     def rec_timecode(self):
