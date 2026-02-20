@@ -83,6 +83,13 @@ FOCUS_STEP_FINE    = 2     # , . keys
 FOCUS_MIN          = 0
 FOCUS_MAX          = 255   # adjusted at runtime if camera reports higher
 
+# UI Colors
+COLOR_RED    = (0, 0, 220)
+COLOR_WHITE  = (255, 255, 255)
+COLOR_BLACK  = (0, 0, 0)
+COLOR_GREEN  = (50, 220, 50)
+COLOR_AMBER  = (0, 165, 255)
+
 # ─────────────────────────────────────────────
 #  Output Format Presets
 #  Each entry is the full FFmpeg recipe for that format.
@@ -722,11 +729,6 @@ def run_gui(state: CameraState, hat=None):
     apply_camera_settings(state)
 
     FONT   = cv2.FONT_HERSHEY_SIMPLEX
-    RED    = (0, 0, 220)
-    WHITE  = (255, 255, 255)
-    BLACK  = (0, 0, 0)
-    GREEN  = (50, 220, 50)
-    AMBER  = (0, 165, 255)
 
     show_help      = False
     # show_peaking, show_guides, show_histogram are now in state
@@ -807,7 +809,7 @@ def run_gui(state: CameraState, hat=None):
 
         # ── Tally Border (Recording Indicator) ──
         if state.recording:
-            cv2.rectangle(display, (0, 0), (PW - 1, PH - 1), RED, 10)
+            cv2.rectangle(display, (0, 0), (PW - 1, PH - 1), COLOR_RED, 10)
 
         # ── Blink REC dot every 0.5s ──
         if time.time() - blink_timer > 0.5:
@@ -817,7 +819,7 @@ def run_gui(state: CameraState, hat=None):
         # ── Overlays ──
         # Top-left: device & resolution
         res_str = f"{actual_w}×{actual_h}  {state.fps}fps"
-        _shadow_text(display, res_str, (14, 30), FONT, 0.55, WHITE)
+        _shadow_text(display, res_str, (14, 30), FONT, 0.55, COLOR_WHITE)
 
         # ── Update Storage Info (every 2s) ──
         if time.time() - storage_timer > 2.0:
@@ -845,10 +847,10 @@ def run_gui(state: CameraState, hat=None):
         if state.recording:
             tc = state.rec_timecode
             if blink_state:
-                cv2.circle(display, (PW // 2 - 70, 22), 9, RED, -1)
-            _shadow_text(display, f"REC  {tc}", (PW // 2 - 55, 30), FONT, 0.6, RED, thickness=2)
+                cv2.circle(display, (PW // 2 - 70, 22), 9, COLOR_RED, -1)
+            _shadow_text(display, f"REC  {tc}", (PW // 2 - 55, 30), FONT, 0.6, COLOR_RED, thickness=2)
         else:
-            _shadow_text(display, "STANDBY", (PW // 2 - 40, 30), FONT, 0.6, GREEN)
+            _shadow_text(display, "STANDBY", (PW // 2 - 40, 30), FONT, 0.6, COLOR_GREEN)
 
         # Bottom bar: camera settings
         exp_label   = f"EXP {state.exposure}  ({state.shutter_angle:.0f}°)"
@@ -858,17 +860,17 @@ def run_gui(state: CameraState, hat=None):
 
         if state.auto_focus:
             focus_label = "AF  AUTO"
-            focus_color = GREEN
+            focus_color = COLOR_GREEN
         else:
             focus_label = f"MF  {state.focus_pct}%"
-            focus_color = AMBER
+            focus_color = COLOR_AMBER
 
         bar_y = PH - 14
-        _shadow_text(display, exp_label,   (14,         bar_y), FONT, 0.5, WHITE)
-        _shadow_text(display, gain_label,  (PW // 4,    bar_y), FONT, 0.5, WHITE)
-        _shadow_text(display, wb_label,    (PW // 2,    bar_y), FONT, 0.5, WHITE)
+        _shadow_text(display, exp_label,   (14,         bar_y), FONT, 0.5, COLOR_WHITE)
+        _shadow_text(display, gain_label,  (PW // 4,    bar_y), FONT, 0.5, COLOR_WHITE)
+        _shadow_text(display, wb_label,    (PW // 2,    bar_y), FONT, 0.5, COLOR_WHITE)
         _shadow_text(display, focus_label, (PW - 200,   bar_y), FONT, 0.5, focus_color)
-        _shadow_text(display, clip_label,  (PW - 110,   bar_y), FONT, 0.5, WHITE)
+        _shadow_text(display, clip_label,  (PW - 110,   bar_y), FONT, 0.5, COLOR_WHITE)
 
         # Focus pull bar (shown when in manual focus)
         if not state.auto_focus:
@@ -1180,12 +1182,12 @@ def _draw_histogram(img, w, h, gray=None):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
 
-    # Normalize
-    cv2.normalize(hist, hist, 0, 100, cv2.NORM_MINMAX)
+    # Normalize to fit in the box height
+    hist_h = 100
+    cv2.normalize(hist, hist, 0, hist_h, cv2.NORM_MINMAX)
 
     # Draw parameters
     hist_w = 256
-    hist_h = 100
     margin = 20
 
     # Position: Bottom Right, above the bottom bar
@@ -1196,11 +1198,19 @@ def _draw_histogram(img, w, h, gray=None):
     overlay = img.copy()
     cv2.rectangle(overlay, (x_offset, y_offset), (x_offset + hist_w, y_offset + hist_h), (0, 0, 0), -1)
 
-    # Draw histogram lines
-    for i in range(256):
-        val = int(hist[i][0])
-        # Line from bottom up
-        cv2.line(overlay, (x_offset + i, y_offset + hist_h), (x_offset + i, y_offset + hist_h - val), (200, 200, 200), 1)
+    # Convert histogram points to a polyline for faster drawing
+    # Create an array of points (x, y)
+    pts = np.column_stack((
+        np.arange(x_offset, x_offset + 256),
+        y_offset + hist_h - hist.flatten().astype(int)
+    )).astype(np.int32)
+
+    # Draw the histogram curve as a polyline
+    cv2.polylines(overlay, [pts], isClosed=False, color=(200, 200, 200), thickness=1)
+
+    # Optional: Fill the area under the curve
+    # pts_fill = np.vstack([[x_offset, y_offset + hist_h], pts, [x_offset + 255, y_offset + hist_h]])
+    # cv2.fillPoly(overlay, [pts_fill], color=(100, 100, 100))
 
     cv2.addWeighted(overlay, 0.6, img, 0.4, 0, img)
 
