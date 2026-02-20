@@ -246,8 +246,8 @@ class CameraState:
                 self.mic_gain_db    = d.get("mic_gain_db", self.mic_gain_db)
                 self.output_format_idx = d.get("output_format_idx",
                                    d.get("prores_profile", self.output_format_idx))  # legacy compat
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError) as e:
+                print(f"[WARN] Failed to load config: {e}")
 
     def save_config(self):
         data = {
