@@ -1283,22 +1283,52 @@ def _draw_histogram(img, w, h, gray=None):
 
 
 def _draw_format_menu(img, w, h, state):
-    """Draw a centered list of formats, highlighting the selected one."""
-    menu_w = 300
-    menu_h = len(OUTPUT_FORMATS) * 30 + 20
+    """Draw a centered list of formats with details."""
+    FONT = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 0.6
+    thickness = 1
+
+    # Calculate required width based on longest text
+    max_w = 0
+    for fmt in OUTPUT_FORMATS:
+        label_text = fmt['label']
+        detail_text = f"({fmt['ext']})  {fmt['note']}"
+        full_text = f"{label_text}   {detail_text}"
+        (tw, th), _ = cv2.getTextSize(full_text, FONT, scale, thickness)
+        max_w = max(max_w, tw)
+
+    menu_w = max_w + 80
+    menu_h = len(OUTPUT_FORMATS) * 35 + 30
     x = (w - menu_w) // 2
     y = (h - menu_h) // 2
 
+    # Draw background box
     overlay = img.copy()
-    cv2.rectangle(overlay, (x, y), (x + menu_w, y + menu_h), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.8, img, 0.2, 0, img)
+    cv2.rectangle(overlay, (x, y), (x + menu_w, y + menu_h), (20, 20, 20), -1)
+    cv2.rectangle(overlay, (x, y), (x + menu_w, y + menu_h), (100, 100, 100), 1)
+    cv2.addWeighted(overlay, 0.9, img, 0.1, 0, img)
 
-    FONT = cv2.FONT_HERSHEY_SIMPLEX
     for i, fmt in enumerate(OUTPUT_FORMATS):
-        color = (0, 255, 0) if i == state.output_format_idx else (180, 180, 180)
-        thickness = 2 if i == state.output_format_idx else 1
-        text = fmt["label"]
-        cv2.putText(img, text, (x + 20, y + 30 * (i + 1)), FONT, 0.7, color, thickness, cv2.LINE_AA)
+        is_selected = (i == state.output_format_idx)
+
+        # Colors: Green/Bold for selected, Gray/Normal for others
+        color_label = (50, 255, 50) if is_selected else (200, 200, 200)
+        color_detail = (150, 255, 150) if is_selected else (150, 150, 150)
+        curr_thickness = 2 if is_selected else 1
+
+        py = y + 35 * (i + 1)
+
+        # Draw Label
+        cv2.putText(img, fmt["label"], (x + 30, py), FONT, scale, color_label, curr_thickness, cv2.LINE_AA)
+
+        # Draw Details (ext + note) to the right of the label
+        (label_w, _), _ = cv2.getTextSize(fmt["label"], FONT, scale, curr_thickness)
+        detail_text = f"({fmt['ext']})  {fmt['note']}"
+        cv2.putText(img, detail_text, (x + 30 + label_w + 20, py), FONT, 0.5, color_detail, 1, cv2.LINE_AA)
+
+        # Draw selection indicator ">"
+        if is_selected:
+            cv2.putText(img, ">", (x + 10, py), FONT, scale, (50, 255, 50), 2, cv2.LINE_AA)
 
 
 def _draw_help(img, w, h, font):
