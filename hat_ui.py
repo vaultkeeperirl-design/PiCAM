@@ -23,6 +23,8 @@ Standalone test:  python3 hat_ui.py
 With main tool:   python3 obsbot_capture.py --mode headless --hat
 """
 
+__version__ = "0.1.0"
+
 import time
 import threading
 import os
