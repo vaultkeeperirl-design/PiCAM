@@ -830,7 +830,7 @@ def run_gui(state: CameraState, hat=None):
 
         # ── Focus Peaking overlay (before all HUD text) ──
         if state.focus_peaking and NP_OK:
-            display = _apply_focus_peaking(display)
+            display = _apply_focus_peaking(display, gray=gray)
 
         # ── Tally Border (Recording Indicator) ──
         if state.recording:
@@ -907,7 +907,7 @@ def run_gui(state: CameraState, hat=None):
 
         # Live Histogram
         if state.show_histogram:
-            _draw_histogram(display, PW, PH)
+            _draw_histogram(display, PW, PH, gray=gray)
 
         # Format Menu
         if time.time() - format_menu_timer < 3.0:
