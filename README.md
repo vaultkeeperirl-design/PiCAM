@@ -1,5 +1,7 @@
 # PiCAM (OBSBOT Meet 2 — Pi5 CineRig)
 
+**Current Version: v0.1.0**
+
 CinePi-inspired capture tool for the **OBSBOT Meet 2 4K** on **Raspberry Pi 5**.
 Records to **MP4, MKV or ProRes MOV** via FFmpeg with full manual camera controls,
 live audio metering, and a **Waveshare 1.44" LCD HAT** viewfinder.

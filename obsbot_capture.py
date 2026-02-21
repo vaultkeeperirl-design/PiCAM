@@ -9,6 +9,8 @@ Usage:
     python3 obsbot_capture.py --mode gui --device /dev/video2 --fps 24
 """
 
+__version__ = "0.1.0"
+
 import argparse
 import subprocess
 import threading
