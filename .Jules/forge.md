@@ -7,3 +7,8 @@
 
 **Learning:** Linting revealed critical runtime errors (`NameError`) in `obsbot_capture.py` where variables (`show_peaking`, `show_histogram`, `AMBER`, `RED`) were used without being defined in the local scope.
 **Action:** Fixed the undefined variables by referencing the correct `state` attributes and global constants.
+
+## 2025-02-21 - [Build Safety & Platform Compatibility]
+
+**Learning:** `install.sh` was hardcoded for Raspberry Pi 5, performing potentially destructive system modifications (/boot/firmware) on non-Pi platforms. `requirements.txt` also lacked platform markers for `spidev`.
+**Action:** Added rigorous platform detection to `install.sh` to skip Pi-specific config on other systems. Added `sys_platform == 'linux'` marker to `spidev` in `requirements.txt`.
