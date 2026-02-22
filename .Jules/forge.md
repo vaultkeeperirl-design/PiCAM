@@ -12,3 +12,8 @@
 
 **Learning:** `install.sh` was hardcoded for Raspberry Pi 5, performing potentially destructive system modifications (/boot/firmware) on non-Pi platforms. `requirements.txt` also lacked platform markers for `spidev`.
 **Action:** Added rigorous platform detection to `install.sh` to skip Pi-specific config on other systems. Added `sys_platform == 'linux'` marker to `spidev` in `requirements.txt`.
+
+## 2026-02-22 - [CI Pipeline Hardening]
+
+**Learning:** The CI pipeline (`ci.yml`) only performed linting, leaving logic errors undetected until release.
+**Action:** Added a unit test step (`python3 -m unittest discover tests`) to the CI workflow to ensure tests pass on every push and pull request.
