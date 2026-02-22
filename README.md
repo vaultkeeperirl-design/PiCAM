@@ -27,9 +27,14 @@ live audio metering, and a **Waveshare 1.44" LCD HAT** viewfinder.
 
 ## Architecture
 
-- **`obsbot_capture.py`**: Core logic, FFmpeg process management, and OpenCV GUI. Handles `CameraState` which stores all settings.
-- **`hat_ui.py`**: Runs in a separate thread, handling the LCD display (SPI) and joystick input (GPIO). It reads from and updates the shared `CameraState`.
-- **`install.sh`**: One-time setup script for dependencies and system configuration.
+- **`obsbot_capture.py`**: The main application controller. It manages:
+  - **Main Thread**: Handles OpenCV GUI (HDMI preview), keyboard input, and the FFmpeg recording process.
+  - **`CameraState`**: A shared data class acting as the source of truth for all settings (exposure, focus, format).
+- **`hat_ui.py`**: Run as a daemon thread. It manages:
+  - **SPI Display**: Renders the 128x128 UI at ~15fps.
+  - **GPIO Input**: Polls joystick and buttons for interaction.
+  - **`FrameGrabber`**: A helper that safely extracts frames from the main OpenCV loop for the HAT's live preview.
+- **`install.sh`**: One-time setup script that configures system boot parameters (USB bandwidth, SPI, GPIO) and installs dependencies.
 
 ---
 
@@ -248,3 +253,35 @@ If Filmora can't find the file make sure you're pointing it at your `outdir`.
 
 Settings (exposure, WB, focus, gain, selected format) persist between sessions
 in `~/.obsbot_cinepi.json`.
+
+---
+
+## 🛠️ Contributing
+
+We welcome contributions! Please follow these steps to set up your development environment.
+
+### Development Setup
+
+1.  **Install System Dependencies** (Raspberry Pi OS Bookworm):
+    ```bash
+    sudo apt install ffmpeg v4l-utils python3-opencv libopenblas-dev
+    ```
+
+2.  **Install Python Dependencies**:
+    ```bash
+    pip3 install -r requirements.txt
+    ```
+
+### Running Tests
+
+Run the unit test suite to verify changes:
+
+```bash
+python3 -m unittest discover tests
+```
+
+### Code Style
+
+-   Keep logic simple and readable.
+-   `obsbot_capture.py` is the single-file entry point to minimize import complexity.
+-   Use `black` or similar for formatting if possible.
