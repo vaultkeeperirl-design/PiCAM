@@ -494,6 +494,11 @@ class HatUI:
             self._load_fonts()
             self.display.fill(C_BG)
 
+            # Reusable PIL buffers to avoid allocation loop
+            self._canvas = Image.new("RGB", (LCD_W, LCD_H), C_BG)
+            self._draw   = ImageDraw.Draw(self._canvas)
+            self._thumb_border = Image.new("RGB", (42, 32), C_MGRAY)
+
             # Grabber created here but NOT started — the GUI calls
             # grabber.start() after it has its first frame, avoiding conflict
             self.grabber = FrameGrabber(self.state.device)
@@ -863,13 +868,14 @@ class HatUI:
     #  All other pages — HUD page with small live thumbnail
     # ─────────────────────────────────────────────────────────────────
     def _render_page(self, s, page, acc):
-        img  = Image.new("RGB", (LCD_W, LCD_H), C_BG)
-        draw = ImageDraw.Draw(img)
+        # Reuse persistent canvas
+        self._draw.rectangle((0, 0, LCD_W, LCD_H), fill=C_BG)
+        img  = self._canvas
+        draw = self._draw
 
         # ── Live thumbnail: bottom-right 40×30 ───────────────────
         self._paste_thumbnail(img, LCD_W-42, LCD_H-32, 40, 30)
-        # Re-draw after thumbnail paste
-        draw = ImageDraw.Draw(img)
+        # No need to recreate draw object, it remains attached to img
 
         self._top_bar(draw, s, acc)
 
@@ -899,9 +905,14 @@ class HatUI:
         frame = self.grabber.get()
         thumb = frame.resize((w, h), Image.BILINEAR)
         # Thin border
-        border = Image.new("RGB", (w+2, h+2), C_MGRAY)
-        border.paste(thumb, (1, 1))
-        img.paste(border, (x-1, y-1))
+        if w == 40 and h == 30:
+            # Reuse persistent border buffer for standard size
+            self._thumb_border.paste(thumb, (1, 1))
+            img.paste(self._thumb_border, (x-1, y-1))
+        else:
+            border = Image.new("RGB", (w+2, h+2), C_MGRAY)
+            border.paste(thumb, (1, 1))
+            img.paste(border, (x-1, y-1))
 
     # ─── Chrome for non-LIVE pages ────────────────────────────────────
     def _top_bar(self, draw, s, acc):
