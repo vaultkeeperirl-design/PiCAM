@@ -18,58 +18,94 @@ echo -e "${BOLD}║   OBSBOT Meet 2 — Pi5 CineRig Setup      ║${RESET}"
 echo -e "${BOLD}╚══════════════════════════════════════════╝${RESET}"
 echo ""
 
+# ── Platform Detection ───────────────────────────────────────
+IS_PI=false
+if [ -f /proc/device-tree/model ]; then
+    if grep -q "Raspberry Pi" /proc/device-tree/model; then
+        IS_PI=true
+    fi
+fi
+
+if [ "$IS_PI" = true ]; then
+    echo -e "${GREEN}✓ Raspberry Pi detected.${RESET}"
+else
+    echo -e "${YELLOW}⚠ Not running on a Raspberry Pi.${RESET}"
+    echo -e "  Skipping Pi-specific system configuration (boot/config.txt, lgpio)."
+fi
+
 # ── System dependencies ──────────────────────────────────────
 echo -e "${CYAN}[1/4] Installing system packages…${RESET}"
-sudo apt-get update -qq
-sudo apt-get install -y \
-    ffmpeg \
-    libx264-dev \
-    libx265-dev \
-    v4l-utils \
-    python3-pip \
-    python3-dev \
-    libopencv-dev \
-    python3-opencv \
-    python3-numpy
+
+if command -v apt-get &> /dev/null; then
+    sudo apt-get update -qq
+    sudo apt-get install -y \
+        ffmpeg \
+        libx264-dev \
+        libx265-dev \
+        v4l-utils \
+        python3-pip \
+        python3-dev \
+        libopencv-dev \
+        python3-opencv \
+        python3-numpy
+else
+    echo -e "${YELLOW}  apt-get not found. Skipping system package installation.${RESET}"
+    echo -e "  Ensure ffmpeg, v4l-utils, and python3-opencv are installed manually."
+fi
 
 # ── Python packages ──────────────────────────────────────────
 echo -e "${CYAN}[2/4] Installing Python packages…${RESET}"
-# RPi.GPIO does not work on Pi 5 — replace with the drop-in lgpio shim
-sudo apt-get remove -y python3-rpi.gpio 2>/dev/null || true
-sudo apt-get install -y python3-rpi-lgpio python3-lgpio
+
+if [ "$IS_PI" = true ]; then
+    # RPi.GPIO does not work on Pi 5 — replace with the drop-in lgpio shim
+    sudo apt-get remove -y python3-rpi.gpio 2>/dev/null || true
+    sudo apt-get install -y python3-rpi-lgpio python3-lgpio
+fi
 
 pip3 install --break-system-packages -r requirements.txt
 
 # ── USB bandwidth for 4K UVC ─────────────────────────────────
-echo -e "${CYAN}[3/4] Configuring USB and SPI…${RESET}"
+if [ "$IS_PI" = true ]; then
+    echo -e "${CYAN}[3/4] Configuring USB and SPI…${RESET}"
 
-# Increase usbfs memory limit (needed for 4K webcam streams)
-if ! grep -q "usbcore.usbfs_memory_mb" /boot/firmware/cmdline.txt 2>/dev/null; then
-    echo -e "${YELLOW}  Adding usbfs_memory_mb=512 to boot cmdline…${RESET}"
-    sudo sed -i 's/$/ usbcore.usbfs_memory_mb=512/' /boot/firmware/cmdline.txt
-    echo -e "${GREEN}  ✓ Added (will take effect after reboot)${RESET}"
-else
-    echo -e "${GREEN}  ✓ USB memory already set${RESET}"
-fi
+    # Increase usbfs memory limit (needed for 4K webcam streams)
+    if [ -f /boot/firmware/cmdline.txt ]; then
+        if ! grep -q "usbcore.usbfs_memory_mb" /boot/firmware/cmdline.txt 2>/dev/null; then
+            echo -e "${YELLOW}  Adding usbfs_memory_mb=512 to boot cmdline…${RESET}"
+            sudo sed -i 's/$/ usbcore.usbfs_memory_mb=512/' /boot/firmware/cmdline.txt
+            echo -e "${GREEN}  ✓ Added (will take effect after reboot)${RESET}"
+        else
+            echo -e "${GREEN}  ✓ USB memory already set${RESET}"
+        fi
+    else
+        echo -e "${RED}  /boot/firmware/cmdline.txt not found!${RESET}"
+    fi
 
-# Enable SPI for the LCD HAT
-CONFIG=/boot/firmware/config.txt
-if ! grep -q "dtparam=spi=on" "$CONFIG" 2>/dev/null; then
-    echo -e "${YELLOW}  Enabling SPI in /boot/firmware/config.txt…${RESET}"
-    echo "dtparam=spi=on" | sudo tee -a "$CONFIG" > /dev/null
-    echo -e "${GREEN}  ✓ SPI enabled${RESET}"
-else
-    echo -e "${GREEN}  ✓ SPI already enabled${RESET}"
-fi
+    # Enable SPI for the LCD HAT
+    CONFIG=/boot/firmware/config.txt
+    if [ -f "$CONFIG" ]; then
+        if ! grep -q "dtparam=spi=on" "$CONFIG" 2>/dev/null; then
+            echo -e "${YELLOW}  Enabling SPI in /boot/firmware/config.txt…${RESET}"
+            echo "dtparam=spi=on" | sudo tee -a "$CONFIG" > /dev/null
+            echo -e "${GREEN}  ✓ SPI enabled${RESET}"
+        else
+            echo -e "${GREEN}  ✓ SPI already enabled${RESET}"
+        fi
 
-# GPIO pull-ups for HAT buttons and joystick (KEY1/2/3 + joystick 5-way)
-# Pins: KEY1=21 KEY2=20 KEY3=16  Joy: UP=6 DOWN=19 LEFT=5 RIGHT=26 PRESS=13
-if ! grep -q "gpio=6,19,5,26,13,21,20,16=pu" "$CONFIG" 2>/dev/null; then
-    echo -e "${YELLOW}  Adding HAT GPIO pull-ups to config.txt…${RESET}"
-    echo "gpio=6,19,5,26,13,21,20,16=pu" | sudo tee -a "$CONFIG" > /dev/null
-    echo -e "${GREEN}  ✓ GPIO pull-ups set${RESET}"
+        # GPIO pull-ups for HAT buttons and joystick (KEY1/2/3 + joystick 5-way)
+        # Pins: KEY1=21 KEY2=20 KEY3=16  Joy: UP=6 DOWN=19 LEFT=5 RIGHT=26 PRESS=13
+        if ! grep -q "gpio=6,19,5,26,13,21,20,16=pu" "$CONFIG" 2>/dev/null; then
+            echo -e "${YELLOW}  Adding HAT GPIO pull-ups to config.txt…${RESET}"
+            echo "gpio=6,19,5,26,13,21,20,16=pu" | sudo tee -a "$CONFIG" > /dev/null
+            echo -e "${GREEN}  ✓ GPIO pull-ups set${RESET}"
+        else
+            echo -e "${GREEN}  ✓ GPIO pull-ups already set${RESET}"
+        fi
+    else
+        echo -e "${RED}  $CONFIG not found!${RESET}"
+    fi
 else
-    echo -e "${GREEN}  ✓ GPIO pull-ups already set${RESET}"
+    echo -e "${CYAN}[3/4] Skipping USB/SPI config (non-Pi platform).${RESET}"
 fi
 
 # ── Detect camera ────────────────────────────────────────────
