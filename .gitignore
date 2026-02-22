@@ -34,3 +34,8 @@ Thumbs.db
 *.mov
 *.mkv
 *.avi
+*.h264
+*.h265
+*.aac
+*.wav
+*.pcm
