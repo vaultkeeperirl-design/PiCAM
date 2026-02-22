@@ -20,6 +20,7 @@ import sys
 import signal
 import json
 import datetime
+import shutil
 from pathlib import Path
 
 # ─────────────────────────────────────────────
@@ -105,6 +106,7 @@ OUTPUT_FORMATS = [
         "label":    "H.264 High",
         "ext":      "mp4",
         "note":     "~50Mbps · Filmora ★",
+        "est_mbps": 50,
         "cpu_warn": True,           # flag for 4K CPU warning
         "vcodec":   "libx264",
         "vparams":  ["-crf","18","-preset","faster","-pix_fmt","yuv420p"],
@@ -117,6 +119,7 @@ OUTPUT_FORMATS = [
         "label":    "H.264 Std",
         "ext":      "mp4",
         "note":     "~20Mbps · smaller files",
+        "est_mbps": 20,
         "cpu_warn": True,
         "vcodec":   "libx264",
         "vparams":  ["-crf","23","-preset","faster","-pix_fmt","yuv420p"],
@@ -129,6 +132,7 @@ OUTPUT_FORMATS = [
         "label":    "H.265 / HEVC",
         "ext":      "mp4",
         "note":     "~25Mbps · efficient 4K",
+        "est_mbps": 25,
         "cpu_warn": True,
         "vcodec":   "libx265",
         "vparams":  ["-crf","20","-preset","faster","-pix_fmt","yuv420p"],
@@ -141,6 +145,7 @@ OUTPUT_FORMATS = [
         "label":    "MKV H.264",
         "ext":      "mkv",
         "note":     "~50Mbps · flexible container",
+        "est_mbps": 50,
         "cpu_warn": True,
         "vcodec":   "libx264",
         "vparams":  ["-crf","18","-preset","faster","-pix_fmt","yuv420p"],
@@ -153,6 +158,7 @@ OUTPUT_FORMATS = [
         "label":    "ProRes HQ",
         "ext":      "mov",
         "note":     "~220Mbps · max quality",
+        "est_mbps": 220,
         "cpu_warn": False,
         "vcodec":   "prores_ks",
         "vparams":  ["-profile:v","3","-vendor","ap10","-pix_fmt","yuv422p10le"],
@@ -165,6 +171,7 @@ OUTPUT_FORMATS = [
         "label":    "ProRes LT",
         "ext":      "mov",
         "note":     "~100Mbps · edit-ready",
+        "est_mbps": 100,
         "cpu_warn": False,
         "vcodec":   "prores_ks",
         "vparams":  ["-profile:v","1","-vendor","ap10","-pix_fmt","yuv422p10le"],
@@ -177,6 +184,7 @@ OUTPUT_FORMATS = [
         "label":    "ProRes Proxy",
         "ext":      "mov",
         "note":     "~40Mbps · offline / rough cut",
+        "est_mbps": 40,
         "cpu_warn": False,
         "vcodec":   "prores_ks",
         "vparams":  ["-profile:v","0","-vendor","ap10","-pix_fmt","yuv422p10le"],
@@ -322,18 +330,12 @@ class CameraState:
                 return (0, 0)
 
             # Use shutil for cross-platform disk usage
-            import shutil
             total, used, free = shutil.disk_usage(str(self.output_dir))
             free_gb = free / (1024**3)
 
-            # Estimate bitrate from format note
+            # Estimate bitrate from format definition
             fmt  = self.output_format
-            note = fmt.get("note", "")
-            try:
-                # Extract numeric part from "~50Mbps"
-                mbps = int([w for w in note.replace("~", "").split() if "Mbps" in w][0].replace("Mbps", ""))
-            except Exception:
-                mbps = 50 # Default safe fallback
+            mbps = fmt.get("est_mbps", 50)
 
             # Adjust for resolution (simple heuristic)
             if "1280x720" in str(self.resolution):
