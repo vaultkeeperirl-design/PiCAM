@@ -36,6 +36,8 @@ live audio metering, and a **Waveshare 1.44" LCD HAT** viewfinder.
   - **`FrameGrabber`**: A helper that safely extracts frames from the main OpenCV loop for the HAT's live preview.
 - **`install.sh`**: One-time setup script that configures system boot parameters (USB bandwidth, SPI, GPIO) and installs dependencies.
 
+**Data Flow:** `CameraState` is the single source of truth. The GUI loop (OpenCV) and HAT loop (daemon) both read/write to it independently. FFmpeg is launched as a subprocess reading from `CameraState` config, while the GUI temporarily releases the camera resource.
+
 ---
 
 ## Quick Start
@@ -212,6 +214,12 @@ For better audio use any USB mic or audio interface with `--audio-device hw:X,0`
 
 ## Troubleshooting
 
+**General Diagnostics**
+Run the built-in diagnostic tool to check camera, audio, and dependencies:
+```bash
+python3 obsbot_capture.py --mode diag
+```
+
 **H.264/H.265 dropped frames at 4K**
 Switch to 1080p: `--res 1920x1080`, or use ProRes which the Pi handles easily.
 
@@ -256,11 +264,11 @@ in `~/.obsbot_cinepi.json`.
 
 ---
 
-## 🛠️ Contributing
+## 🛠️ Development & Contributing
 
 We welcome contributions! Please follow these steps to set up your development environment.
 
-### Development Setup
+### Development Setup (Raspberry Pi)
 
 1.  **Install System Dependencies** (Raspberry Pi OS Bookworm):
     ```bash
@@ -272,9 +280,25 @@ We welcome contributions! Please follow these steps to set up your development e
     pip3 install -r requirements.txt
     ```
 
+### Development Setup (Local / Non-Pi)
+
+You can run unit tests on macOS, Windows, or standard Linux without the camera hardware.
+
+1.  **Create a virtual environment:**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+    *Note: If `spidev` fails to install on non-Linux systems, you can safely ignore it or comment it out in `requirements.txt` for local testing.*
+
 ### Running Tests
 
-Run the unit test suite to verify changes:
+Run the unit test suite to verify changes (works without hardware):
 
 ```bash
 python3 -m unittest discover tests
