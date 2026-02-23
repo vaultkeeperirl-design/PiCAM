@@ -70,7 +70,7 @@ try:
     from obsbot_capture import OUTPUT_FORMATS, N_FORMATS
 except ImportError:
     OUTPUT_FORMATS = [{"key":"prores_hq","label":"ProRes HQ","ext":"mov",
-                       "note":"~220Mbps","cpu_warn":False}]
+                       "note":"~220Mbps","est_mbps":220,"cpu_warn":False}]
     N_FORMATS = 1
 
 # ─────────────────────────────────────────────
@@ -1143,16 +1143,27 @@ class HatUI:
             draw.text((3,y), f"FREE  {free_gb:.1f}/{total_gb:.0f} GB", fill=C_WHITE, font=xs); y+=11
             _bar(draw, 3, y, LCD_W-50, 7, used_pct,
                  C_RED if used_pct>0.9 else (C_AMBER if used_pct>0.7 else C_GREEN)); y+=10
-            # Estimate remaining time using bitrate from format note (e.g. "~50Mbps")
-            fmt  = OUTPUT_FORMATS[s.output_format_idx]
-            note = fmt.get("note", "")
-            try:
-                mbps = int([w for w in note.replace("~","").split() if "Mbps" in w][0].replace("Mbps",""))
-            except Exception:
-                mbps = 50
-            if "720" in s.resolution: mbps = max(1, mbps//3)
-            elif "1080" in s.resolution: mbps = max(1, mbps//2)
-            mins = int(free_gb*8000/mbps) if mbps else 0
+
+            # Use centralized logic if available
+            if hasattr(s, "remaining_storage_info"):
+                _, mins = s.remaining_storage_info
+            else:
+                # Robust fallback logic
+                fmt  = OUTPUT_FORMATS[s.output_format_idx]
+                mbps = fmt.get("est_mbps")
+                # Fallback to note parsing only if est_mbps is missing
+                if not mbps:
+                    note = fmt.get("note", "")
+                    try:
+                        mbps = int([w for w in note.replace("~","").split() if "Mbps" in w][0].replace("Mbps",""))
+                    except Exception:
+                        mbps = 50
+
+                if "720" in str(s.resolution): mbps = max(1, mbps//3)
+                elif "1080" in str(s.resolution): mbps = max(1, mbps//2)
+
+                mins = int((free_gb*8000/mbps)/60) if mbps else 0
+
             h,m  = divmod(mins,60)
             draw.text((3,y), f"{h}h {m:02d}m remaining", fill=C_MGRAY, font=xs)
         except Exception:
