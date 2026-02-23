@@ -947,28 +947,34 @@ def run_gui(state: CameraState, hat=None):
             state.exposure = min(state.exposure + 50, 10000)
             if not state.auto_exp:
                 v4l2_set(state.device, V4L2_EXPOSURE, state.exposure)
+            show_toast(f"EXP {state.exposure}")
         elif key == ord('d'):                # exposure down
             state.exposure = max(state.exposure - 50, 50)
             if not state.auto_exp:
                 v4l2_set(state.device, V4L2_EXPOSURE, state.exposure)
+            show_toast(f"EXP {state.exposure}")
 
         # Gain / ISO
         elif key == ord('g'):
             state.gain = min(state.gain + 10, 500)
             v4l2_set(state.device, V4L2_GAIN, state.gain)
+            show_toast(f"ISO ~{state.gain * 10}")
         elif key == ord('f'):
             state.gain = max(state.gain - 10, 0)
             v4l2_set(state.device, V4L2_GAIN, state.gain)
+            show_toast(f"ISO ~{state.gain * 10}")
 
         # White balance
         elif key == ord('w'):
             state.wb_temp = min(state.wb_temp + 100, 10000)
             if not state.auto_wb:
                 v4l2_set(state.device, V4L2_WB_TEMP, state.wb_temp)
+            show_toast(f"WB {state.wb_temp}K")
         elif key == ord('s'):
             state.wb_temp = max(state.wb_temp - 100, 2000)
             if not state.auto_wb:
                 v4l2_set(state.device, V4L2_WB_TEMP, state.wb_temp)
+            show_toast(f"WB {state.wb_temp}K")
 
         # Auto toggles
         elif key == ord('a'):
@@ -997,18 +1003,22 @@ def run_gui(state: CameraState, hat=None):
             if not state.auto_focus:
                 state.focus = min(state.focus + FOCUS_STEP_COARSE, state.focus_max)
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
+                show_toast(f"FOCUS {state.focus_pct}%")
         elif key == ord('['):                # [ = focus closer (coarse)
             if not state.auto_focus:
                 state.focus = max(state.focus - FOCUS_STEP_COARSE, FOCUS_MIN)
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
+                show_toast(f"FOCUS {state.focus_pct}%")
         elif key == ord('.'):                # . = fine far
             if not state.auto_focus:
                 state.focus = min(state.focus + FOCUS_STEP_FINE, state.focus_max)
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
+                show_toast(f"FOCUS {state.focus_pct}%")
         elif key == ord(','):                # , = fine near
             if not state.auto_focus:
                 state.focus = max(state.focus - FOCUS_STEP_FINE, FOCUS_MIN)
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
+                show_toast(f"FOCUS {state.focus_pct}%")
         elif key == ord('k'):                # K = toggle focus peaking
             state.focus_peaking = not state.focus_peaking
             show_toast("PEAKING ON" if state.focus_peaking else "PEAKING OFF",
@@ -1029,8 +1039,10 @@ def run_gui(state: CameraState, hat=None):
                        COLOR_RED if state.audio_muted else COLOR_GREEN)
         elif key == ord('+') or key == ord('='):   # + = mic gain up
             state.mic_gain_db = min(state.mic_gain_db + 3, 20)
+            show_toast(f"MIC {state.mic_gain_db}dB")
         elif key == ord('-'):                # - = mic gain down
             state.mic_gain_db = max(state.mic_gain_db - 3, -20)
+            show_toast(f"MIC {state.mic_gain_db}dB")
 
         # Output format cycle
         elif key == ord('p'):
