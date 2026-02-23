@@ -9,3 +9,8 @@
 
 **Learning:** New contributors on non-Pi platforms (macOS/Windows) were blocked by strict hardware requirements (Raspberry Pi, HAT) in the setup guide, unaware they could run unit tests locally.
 **Action:** Split setup instructions into "Raspberry Pi" (Production) and "Local / Non-Pi" (Development) sections, clarified `install.sh` vs `requirements.txt`, and added "General Diagnostics" to troubleshooting.
+
+## 2026-02-23 - Linux Audio Deps & Linting Clarity
+
+**Learning:** Linux developers faced friction due to missing system audio dependencies for `sounddevice` and lack of documented linting commands.
+**Action:** Documented `libasound2-dev` / `portaudio19-dev` requirements and added explicit `pylint` instructions.
