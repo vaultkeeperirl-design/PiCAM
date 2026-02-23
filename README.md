@@ -282,19 +282,27 @@ We welcome contributions! Please follow these steps to set up your development e
 
 ### Development Setup (Local / Non-Pi)
 
-You can run unit tests on macOS, Windows, or standard Linux without the camera hardware.
+You can run unit tests and linting on macOS, Windows, or standard Linux without the camera hardware.
 
-1.  **Create a virtual environment:**
+1.  **System Dependencies (Linux Only):**
+    If developing on Linux, install audio libraries required by `sounddevice`:
+    ```bash
+    sudo apt install libasound2-dev portaudio19-dev
+    ```
+    *(macOS/Windows users can skip this step as binaries are included in the wheel)*
+
+2.  **Create a virtual environment:**
     ```bash
     python3 -m venv venv
     source venv/bin/activate
     ```
 
-2.  **Install dependencies:**
+3.  **Install dependencies:**
     ```bash
     pip install -r requirements.txt
+    pip install pylint  # For linting
     ```
-    *Note: If `spidev` fails to install on non-Linux systems, you can safely ignore it or comment it out in `requirements.txt` for local testing.*
+    *Note: `spidev` is Linux-only and will be skipped automatically on macOS/Windows.*
 
 ### Running Tests
 
@@ -309,3 +317,11 @@ python3 -m unittest discover tests
 -   Keep logic simple and readable.
 -   `obsbot_capture.py` is the single-file entry point to minimize import complexity.
 -   Use `black` or similar for formatting if possible.
+
+### Static Analysis
+
+Ensure code quality by running pylint (enforced in CI):
+
+```bash
+pylint obsbot_capture.py hat_ui.py
+```
