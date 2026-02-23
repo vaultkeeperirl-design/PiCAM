@@ -144,5 +144,43 @@ class TestCameraLifecycle(unittest.TestCase):
         self.assertIsNone(self.state.ffmpeg_proc)
         self.mock_cap.open.assert_called()
 
+    @patch("obsbot_capture.subprocess.Popen")
+    @patch("obsbot_capture.open")
+    def test_start_recording_headless(self, mock_open, mock_popen):
+        """Test recording start in headless mode (redirect stderr to file)."""
+        # Setup headless mode
+        self.state.mode = "headless"
+
+        # Mock successful file open
+        mock_file = MagicMock()
+        mock_open.return_value = mock_file
+
+        # Mock successful process
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        # Call start_recording
+        result = obsbot_capture.start_recording(self.state, cap=self.mock_cap)
+
+        # Verify
+        self.assertTrue(result)
+
+        # Verify log file opened
+        log_path = self.state.output_dir / "ffmpeg.log"
+        mock_open.assert_called_with(log_path, "a")
+
+        # Verify log written
+        mock_file.write.assert_called()
+        mock_file.flush.assert_called()
+
+        # Verify Popen called with file as stderr
+        mock_popen.assert_called()
+        args, kwargs = mock_popen.call_args
+        self.assertEqual(kwargs['stderr'], mock_file)
+
+        # Verify file closed
+        mock_file.close.assert_called()
+
 if __name__ == "__main__":
     unittest.main()
