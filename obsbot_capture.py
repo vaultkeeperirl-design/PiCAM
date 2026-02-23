@@ -1212,6 +1212,12 @@ def _draw_audio_meters(img, w, h, state):
             # Peak hold tick
             peak_y = rms_to_y(peak)
             cv2.line(img, (x, peak_y), (x + BAR_W, peak_y), (255, 255, 255), 2)
+
+            # CLIP warning text
+            db = 20 * np.log10(max(rms, 1e-6))
+            if db > -6:
+                # Draw "CLIP" above the bar
+                cv2.putText(img, "CLIP", (X_L - 4, BAR_TOP - 20), FONT, 0.4, (0, 0, 255), 1, cv2.LINE_AA)
         else:
             # MUTE stripe
             cv2.line(img, (x, BAR_TOP + BAR_H//2),
@@ -1437,7 +1443,8 @@ def run_headless(state: CameraState):
                 bar    = "█" * filled + "░" * (width - filled)
                 db     = 20 * (np.log10(max(level, 1e-6)) if NP_OK else -60)
                 col    = "red" if db > -6 else ("yellow" if db > -18 else "green")
-                return f"[{col}]{bar}[/]"
+                suffix = " [bold red]CLIP![/]" if db > -6 else ""
+                return f"[{col}]{bar}[/]{suffix}"
             if state.audio_muted:
                 audio_str = "[bold red]MUTED[/bold red]"
             else:
