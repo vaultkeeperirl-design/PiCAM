@@ -21,3 +21,8 @@ jobs:
       - name: Lint with pylint
         run: |
           pylint obsbot_capture.py hat_ui.py
+
+      - name: Run Unit Tests
+        if: hashFiles('tests/*.py') != ''
+        run: |
+          python3 -m unittest discover tests
