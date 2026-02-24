@@ -168,7 +168,7 @@ automatically using the bitrate of the selected format.
 python3 obsbot_capture.py [OPTIONS]
 
   --mode        gui | headless | diag      (default: gui)
-  --hat                                    Enable HAT viewfinder
+  --hat                                    Enable HAT viewfinder & controls
   --device      /dev/videoN                (default: /dev/video0)
   --fps         24|25|30|50|60             (default: 30)
   --res         3840x2160|1920x1080|1280x720
@@ -270,12 +270,23 @@ We welcome contributions! Please follow these steps to set up your development e
 
 ### Development Setup (Raspberry Pi)
 
+> **Recommended:** Use `bash install.sh` to handle all dependencies and system config automatically.
+> Follow these steps only for manual setup.
+
 1.  **Install System Dependencies** (Raspberry Pi OS Bookworm):
     ```bash
-    sudo apt install ffmpeg v4l-utils python3-opencv libopenblas-dev
+    sudo apt install -y ffmpeg libx264-dev libx265-dev v4l-utils \
+      python3-pip python3-dev libopencv-dev python3-opencv python3-numpy
     ```
 
-2.  **Install Python Dependencies**:
+2.  **Install GPIO shim (Pi 5 requirement):**
+    On Pi 5, `RPi.GPIO` is replaced by `lgpio`:
+    ```bash
+    sudo apt remove python3-rpi.gpio
+    sudo apt install python3-rpi-lgpio python3-lgpio
+    ```
+
+3.  **Install Python Dependencies**:
     ```bash
     pip3 install -r requirements.txt
     ```
