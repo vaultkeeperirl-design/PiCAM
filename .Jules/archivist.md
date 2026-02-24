@@ -14,3 +14,8 @@
 
 **Learning:** Linux developers faced friction due to missing system audio dependencies for `sounddevice` and lack of documented linting commands.
 **Action:** Documented `libasound2-dev` / `portaudio19-dev` requirements and added explicit `pylint` instructions.
+
+## 2026-02-24 - Pi Setup Discrepancy
+
+**Learning:** Manual setup instructions for Raspberry Pi were incomplete and outdated compared to `install.sh` (missing `lgpio` and dev packages), leading to potential confusion for users auditing the setup.
+**Action:** Updated `README.md` Pi setup instructions to match `install.sh` exactly, including the critical `lgpio` shim for Pi 5.
