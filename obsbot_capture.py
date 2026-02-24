@@ -212,6 +212,7 @@ OBSBOT_USB_NAMES   = ["obsbot", "meet", "usb audio"]  # substrings to match
 # ─────────────────────────────────────────────
 class CameraState:
     def __init__(self):
+        self.mode        = "gui"        # "gui", "headless", "diag"
         self.device      = DEFAULT_DEVICE
         self.resolution  = DEFAULT_RES
         self.fps         = DEFAULT_FPS
@@ -614,13 +615,28 @@ def start_recording(state: CameraState, cap=None) -> bool:
     print(f"[REC] Starting: {output_path}")
     print(f"[REC] Format: {state.format_label}  codec: {state.output_format['vcodec']}")
 
+    stderr_file = None
+    if state.mode == "headless":
+        try:
+            log_path = state.output_dir / "ffmpeg.log"
+            stderr_file = open(log_path, "a")
+            stderr_file.write(f"\n[{datetime.datetime.now()}] Starting recording {state.clip_name}\n")
+            stderr_file.flush()
+        except Exception as e:
+            print(f"[WARN] Failed to open log file: {e}")
+
     try:
-        state.ffmpeg_proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=None,    # show FFmpeg errors in terminal
-        )
+        try:
+            state.ffmpeg_proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_file,
+            )
+        finally:
+            if stderr_file:
+                stderr_file.close()
+
         time.sleep(0.8)
         if state.ffmpeg_proc.poll() is not None:
             print(f"[ERROR] FFmpeg exited immediately (code {state.ffmpeg_proc.returncode})")
@@ -1683,6 +1699,7 @@ Examples:
     args = parser.parse_args()
 
     state = CameraState()
+    state.mode   = args.mode
     state.device = args.device
     if args.fps:     state.fps             = args.fps
     if args.res:     state.resolution      = args.res

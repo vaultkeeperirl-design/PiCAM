@@ -1175,7 +1175,7 @@ class HatUI:
 #  Standalone test
 # ─────────────────────────────────────────────
 class _MockState:
-    device="/dev/video0"; resolution="3840x2160"; fps=30
+    mode="gui"; device="/dev/video0"; resolution="3840x2160"; fps=30
     exposure=500; gain=100; wb_temp=5600
     auto_wb=False; auto_exp=False; auto_focus=True
     focus=128; focus_max=255; focus_peaking=False
