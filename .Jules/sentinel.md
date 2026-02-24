@@ -2,3 +2,8 @@
 
 **Learning:** Critical storage estimation logic in `CameraState.remaining_storage_info` relies on parsing unstructured text from `OUTPUT_FORMATS` "note" fields (e.g., extracting "50Mbps" from a string). This creates a hidden dependency where changing a UI label could break recording duration estimates.
 **Action:** Added unit tests that verify this parsing logic holds for current format definitions, ensuring that changes to format descriptions will trigger test failures if they break the bitrate extraction heuristic.
+
+## 2026-02-23 - [Zombie Process Risk in Recording Stop]
+
+**Learning:** The `stop_recording` function handles critical process termination logic, including timeouts and pipe errors. If this fails, the camera device remains locked by a zombie FFmpeg process, requiring a system reboot. This complex error handling path was previously untested.
+**Action:** Added `tests/test_stop_recording_resilience.py` to simulate `subprocess.TimeoutExpired` and generic exceptions, verifying that `kill()` is always called to release hardware resources.
