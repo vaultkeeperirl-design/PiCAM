@@ -432,7 +432,14 @@ def detect_audio_device(state: CameraState):
     (sounddevice index).  Falls back to default input if not found.
     """
     # ── ALSA device string for FFmpeg ──
-    result = subprocess.run(["arecord", "-l"], capture_output=True, text=True)
+    try:
+        result = subprocess.run(["arecord", "-l"], capture_output=True, text=True)
+    except FileNotFoundError:
+        print("[AUDIO] 'arecord' not found — audio input disabled")
+        state.audio_device  = None
+        state.audio_enabled = False
+        return
+
     alsa_card = None
     for line in result.stdout.splitlines():
         low = line.lower()
@@ -530,8 +537,11 @@ def audio_gain_linear(state: CameraState) -> float:
 
 def list_audio_devices():
     """Print all ALSA capture devices for diagnostics."""
-    result = subprocess.run(["arecord", "-l"], capture_output=True, text=True)
-    return result.stdout
+    try:
+        result = subprocess.run(["arecord", "-l"], capture_output=True, text=True)
+        return result.stdout
+    except FileNotFoundError:
+        return "  'arecord' not found (alsa-utils missing?)"
 # ─────────────────────────────────────────────
 #  FFmpeg Recording Engine
 # ─────────────────────────────────────────────
