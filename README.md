@@ -248,6 +248,10 @@ use `--mode gui` on HDMI for preview instead.
 Filmora needs H.264 or H.265 — use `--format h264_high` or `--format h265`.
 If Filmora can't find the file make sure you're pointing it at your `outdir`.
 
+**error: externally-managed-environment**
+This happens on Raspberry Pi OS Bookworm when running `pip install` globally.
+Use `--break-system-packages` (as shown in the setup guide) or use a virtual environment.
+
 ---
 
 ## Output Files
@@ -259,8 +263,11 @@ If Filmora can't find the file make sure you're pointing it at your `outdir`.
   CLIP_20250220_0003.mkv    ← MKV H.264
 ```
 
-Settings (exposure, WB, focus, gain, selected format) persist between sessions
-in `~/.obsbot_cinepi.json`.
+Settings (exposure, WB, focus, gain, format, FPS, mic gain) persist between
+sessions in `~/.obsbot_cinepi.json`.
+
+> **Note:** Resolution is **NOT** persisted. It always defaults to 4K (`3840x2160`).
+> To use 1080p, you must pass `--res 1920x1080` every time.
 
 ---
 
@@ -288,8 +295,9 @@ We welcome contributions! Please follow these steps to set up your development e
 
 3.  **Install Python Dependencies**:
     ```bash
-    pip3 install -r requirements.txt
+    pip3 install -r requirements.txt --break-system-packages
     ```
+    *Note: The `--break-system-packages` flag is required on Raspberry Pi OS Bookworm to install packages globally (matching `install.sh`). If you prefer a virtual environment, see the "Non-Pi" instructions below.*
 
 ### Development Setup (Local / Non-Pi)
 
