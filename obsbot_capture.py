@@ -1400,32 +1400,98 @@ def _draw_format_menu(img, w, h, state):
 
 
 def _draw_help(img, w, h, font):
-    """Overlay keyboard shortcut reference."""
-    help_lines = [
-        "R          Record / Stop",
-        "E / D      Exposure +/-",
-        "G / F      Gain (ISO) +/-",
-        "W / S      White Balance +/-",
-        "A          Toggle Auto Exposure",
-        "B          Toggle Auto White Balance",
-        "T          Toggle Autofocus (AF/MF)",
-        "] / [      Focus Far / Near  (coarse)",
-        ". / ,      Focus Far / Near  (fine)",
-        "K          Toggle Focus Peaking",
-        "L          Toggle Framing Guides",
-        "J          Toggle Histogram",
-        "M          Mute / Unmute mic",
-        "+ / -      Mic gain +3 / -3 dB",
-        "P          Cycle output format (H.264/H.265/ProRes…)",
-        "H          Toggle this help",
-        "Q / ESC    Quit",
+    """Overlay keyboard shortcut reference in a clean 2-column modal."""
+    # Define columns
+    col1 = [
+        ("CAMERA CONTROL", ""),
+        ("E / D",      "Exposure +/-"),
+        ("G / F",      "Gain (ISO) +/-"),
+        ("W / S",      "White Balance +/-"),
+        ("A / B",      "Auto Exp / Auto WB"),
+        ("", ""),
+        ("FOCUS", ""),
+        ("T",          "Toggle AF / MF"),
+        ("] / [",      "Focus Far / Near"),
+        (". / ,",      "Fine Focus"),
+        ("K",          "Focus Peaking"),
     ]
-    bx, by = 30, h // 2 - (len(help_lines) * 24) // 2
-    for i, line in enumerate(help_lines):
-        cv2.putText(img, line, (bx, by + i * 26),
-                    font, 0.55, (0,0,0), 2, cv2.LINE_AA)
-        cv2.putText(img, line, (bx, by + i * 26),
-                    font, 0.55, (240,240,240), 1, cv2.LINE_AA)
+
+    col2 = [
+        ("SYSTEM & TOOLS", ""),
+        ("R",          "Record / Stop"),
+        ("P",          "Cycle Format"),
+        ("M",          "Mute Mic"),
+        ("+ / -",      "Mic Gain +/-"),
+        ("", ""),
+        ("OVERLAYS", ""),
+        ("L",          "Framing Guides"),
+        ("J",          "Histogram"),
+        ("H",          "Toggle Help"),
+        ("Q / ESC",    "Quit App"),
+    ]
+
+    # Layout constants - dynamic scaling for smaller screens
+    base_h = 540.0
+    scale  = min(1.0, h / base_h)
+
+    BOX_W = int(720 * scale)
+    BOX_H = int(420 * scale)
+    bx = (w - BOX_W) // 2
+    by = (h - BOX_H) // 2
+
+    font_s = 0.55 * scale
+    font_head = 0.7 * scale
+    line_h = int(28 * scale)
+
+    # 1. Draw semi-transparent background
+    overlay = img.copy()
+    cv2.rectangle(overlay, (bx, by), (bx + BOX_W, by + BOX_H), (20, 20, 28), -1)
+    # Header strip
+    cv2.rectangle(overlay, (bx, by), (bx + BOX_W, by + int(40 * scale)), (40, 40, 50), -1)
+    cv2.addWeighted(overlay, 0.92, img, 0.08, 0, img)
+
+    # 2. Draw border
+    cv2.rectangle(img, (bx, by), (bx + BOX_W, by + BOX_H), (100, 100, 100), 1)
+
+    # 3. Draw Title
+    title = "KEYBOARD SHORTCUTS"
+    (tw, th), _ = cv2.getTextSize(title, font, font_head, 2)
+    cv2.putText(img, title, (bx + (BOX_W - tw)//2, by + int(28 * scale)),
+                font, font_head, (220, 220, 220), 2, cv2.LINE_AA)
+
+    # 4. Draw Columns
+    col_w = int(100 * scale)
+    col_x_off = int(120 * scale)
+
+    def draw_col(items, x_start, y_start):
+        y = y_start
+        for key, desc in items:
+            if desc == "":  # Section Header
+                if key:
+                    cv2.putText(img, key, (x_start, y), font, font_s - 0.05, (100, 200, 255), 1, cv2.LINE_AA)
+                y += int(24 * scale)
+            else:
+                # Key (Right aligned in col_w space)
+                (kw, kh), _ = cv2.getTextSize(key, font, font_s, 1)
+                cv2.putText(img, key, (x_start + col_w - kw, y), font, font_s, (220, 220, 220), 1, cv2.LINE_AA)
+                # Description
+                cv2.putText(img, desc, (x_start + col_x_off, y), font, font_s, (180, 180, 180), 1, cv2.LINE_AA)
+                y += line_h
+
+    # Left Column
+    draw_col(col1, bx + int(40 * scale), by + int(80 * scale))
+
+    # Right Column
+    draw_col(col2, bx + int(380 * scale), by + int(80 * scale))
+
+    # Divider line
+    cv2.line(img, (bx + BOX_W//2, by + int(60 * scale)), (bx + BOX_W//2, by + BOX_H - int(30 * scale)), (60, 60, 70), 1)
+
+    # Footer hint
+    footer = "Press H to close"
+    (fw, fh), _ = cv2.getTextSize(footer, font, font_s - 0.1, 1)
+    cv2.putText(img, footer, (bx + (BOX_W - fw)//2, by + BOX_H - int(12 * scale)),
+                font, font_s - 0.1, (120, 120, 120), 1, cv2.LINE_AA)
 
 
 # ─────────────────────────────────────────────
