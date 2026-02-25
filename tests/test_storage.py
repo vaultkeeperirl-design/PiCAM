@@ -102,15 +102,54 @@ class TestStorageCalculation(unittest.TestCase):
         self.assertEqual(free_gb, 0)
         self.assertEqual(mins, 0)
 
-    def test_output_dir_not_exist(self):
+    @patch('shutil.disk_usage')
+    def test_output_dir_fallback(self, mock_disk_usage):
         """
-        Verify (0,0) is returned if output directory does not exist.
+        Verify storage info is calculated using parent directory if output_dir missing.
+        """
+        # 50GB free
+        mock_disk_usage.return_value = (100 * 1024**3, 50 * 1024**3, 50 * 1024**3)
+
+        state = obsbot_capture.CameraState()
+
+        # We need output_dir.exists() -> False
+        # But output_dir.parent.exists() -> True
+        mock_out = MagicMock()
+        mock_out.exists.return_value = False
+        mock_out.__str__.return_value = "/tmp/missing"
+
+        mock_parent = MagicMock()
+        mock_parent.exists.return_value = True
+        mock_parent.__str__.return_value = "/tmp"
+        # Prevent infinite recursion in parent traversal
+        mock_parent.parent = mock_parent
+
+        mock_out.parent = mock_parent
+        state.output_dir = mock_out
+
+        # Use 50Mbps format
+        state.output_format_idx = 0
+
+        free_gb, mins = state.remaining_storage_info
+
+        # Should use parent's disk usage (50GB free)
+        self.assertEqual(free_gb, 50.0)
+        # 50GB * 8000 / 50Mbps / 60 = 133.33 -> 133
+        self.assertEqual(mins, 133)
+        # Verify it checked the parent path
+        mock_disk_usage.assert_called_with("/tmp")
+
+    def test_storage_fails_if_no_parent_exists(self):
+        """
+        Verify (0,0) is returned if neither output dir nor parents exist.
         """
         state = obsbot_capture.CameraState()
 
-        # Explicitly mock output_dir.exists to return False
-        state.output_dir = MagicMock()
-        state.output_dir.exists.return_value = False
+        # output_dir and its parent both fail exists()
+        mock_out = MagicMock()
+        mock_out.exists.return_value = False
+        mock_out.parent = mock_out # simulating root that doesn't exist
+        state.output_dir = mock_out
 
         free_gb, mins = state.remaining_storage_info
         self.assertEqual(free_gb, 0)

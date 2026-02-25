@@ -328,10 +328,19 @@ class CameraState:
         """Returns tuple (free_gb, remaining_minutes) or (0, 0) on error."""
         try:
             if not self.output_dir.exists():
-                return (0, 0)
+                # If output directory doesn't exist yet, check parent
+                # This prevents "0 mins remaining" on first run
+                p = self.output_dir
+                while not p.exists() and p.parent != p:
+                    p = p.parent
+                if not p.exists():
+                    return (0, 0)
+                path_to_check = p
+            else:
+                path_to_check = self.output_dir
 
             # Use shutil for cross-platform disk usage
-            total, used, free = shutil.disk_usage(str(self.output_dir))
+            total, used, free = shutil.disk_usage(str(path_to_check))
             free_gb = free / (1024**3)
 
             # Estimate bitrate from format definition
