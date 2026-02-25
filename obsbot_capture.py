@@ -1351,30 +1351,35 @@ def _draw_format_menu(img, w, h, state):
     # Draw background box
     overlay = img.copy()
     cv2.rectangle(overlay, (x, y), (x + menu_w, y + menu_h), (20, 20, 20), -1)
+
+    # Draw highlight bar for selected item
+    row_h = 35
+    sel_idx = state.output_format_idx
+    # Calculate top-left of the selected row
+    bar_y1 = y + row_h * sel_idx + 8
+    bar_y2 = y + row_h * (sel_idx + 1) + 5
+    cv2.rectangle(overlay, (x + 2, bar_y1), (x + menu_w - 2, bar_y2), (60, 100, 60), -1)
+
     cv2.rectangle(overlay, (x, y), (x + menu_w, y + menu_h), (100, 100, 100), 1)
     cv2.addWeighted(overlay, 0.9, img, 0.1, 0, img)
 
     for i, fmt in enumerate(OUTPUT_FORMATS):
         is_selected = (i == state.output_format_idx)
 
-        # Colors: Green/Bold for selected, Gray/Normal for others
-        color_label = (50, 255, 50) if is_selected else (200, 200, 200)
-        color_detail = (150, 255, 150) if is_selected else (150, 150, 150)
+        # Colors: Brighter/Bold for selected, Gray/Normal for others
+        color_label = (255, 255, 255) if is_selected else (200, 200, 200)
+        color_detail = (200, 255, 200) if is_selected else (150, 150, 150)
         curr_thickness = 2 if is_selected else 1
 
         py = y + 35 * (i + 1)
 
-        # Draw Label
-        cv2.putText(img, fmt["label"], (x + 30, py), FONT, scale, color_label, curr_thickness, cv2.LINE_AA)
+        # Draw Label (shifted left slightly since ">" is gone)
+        cv2.putText(img, fmt["label"], (x + 20, py), FONT, scale, color_label, curr_thickness, cv2.LINE_AA)
 
         # Draw Details (ext + note) to the right of the label
         (label_w, _), _ = cv2.getTextSize(fmt["label"], FONT, scale, curr_thickness)
         detail_text = f"({fmt['ext']})  {fmt['note']}"
-        cv2.putText(img, detail_text, (x + 30 + label_w + 20, py), FONT, 0.5, color_detail, 1, cv2.LINE_AA)
-
-        # Draw selection indicator ">"
-        if is_selected:
-            cv2.putText(img, ">", (x + 10, py), FONT, scale, (50, 255, 50), 2, cv2.LINE_AA)
+        cv2.putText(img, detail_text, (x + 20 + label_w + 20, py), FONT, 0.5, color_detail, 1, cv2.LINE_AA)
 
 
 def _draw_help(img, w, h, font):
