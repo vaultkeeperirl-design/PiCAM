@@ -19,3 +19,8 @@
 
 **Learning:** Manual setup instructions for Raspberry Pi were incomplete and outdated compared to `install.sh` (missing `lgpio` and dev packages), leading to potential confusion for users auditing the setup.
 **Action:** Updated `README.md` Pi setup instructions to match `install.sh` exactly, including the critical `lgpio` shim for Pi 5.
+
+## 2026-02-25 - Bookworm Env & Persistence Clarity
+
+**Learning:** Users on Raspberry Pi OS Bookworm face `externally-managed-environment` errors when following manual setup instructions, and confusion arises from `resolution` not persisting like other settings.
+**Action:** Updated `pip` commands to include `--break-system-packages` (matching `install.sh`), added a troubleshooting entry, and explicitly documented which settings persist vs. which reset (Resolution).
