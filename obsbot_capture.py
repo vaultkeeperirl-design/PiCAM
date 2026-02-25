@@ -248,15 +248,26 @@ class CameraState:
         if CONFIG_FILE.exists():
             try:
                 d = json.loads(CONFIG_FILE.read_text())
-                self.exposure       = d.get("exposure", self.exposure)
-                self.gain           = d.get("gain", self.gain)
-                self.wb_temp        = d.get("wb_temp", self.wb_temp)
-                self.fps            = d.get("fps", self.fps)
-                self.focus          = d.get("focus", self.focus)
-                self.auto_focus     = d.get("auto_focus", self.auto_focus)
-                self.mic_gain_db    = d.get("mic_gain_db", self.mic_gain_db)
-                self.output_format_idx = d.get("output_format_idx",
-                                   d.get("prores_profile", self.output_format_idx))  # legacy compat
+
+                # Robust loading: ignore None values to preserve defaults
+                def _get(key, default):
+                    val = d.get(key)
+                    return val if val is not None else default
+
+                self.exposure       = _get("exposure", self.exposure)
+                self.gain           = _get("gain", self.gain)
+                self.wb_temp        = _get("wb_temp", self.wb_temp)
+                self.fps            = _get("fps", self.fps)
+                self.focus          = _get("focus", self.focus)
+                self.auto_focus     = _get("auto_focus", self.auto_focus)
+                self.mic_gain_db    = _get("mic_gain_db", self.mic_gain_db)
+
+                # Special handling for legacy keys
+                fmt_idx = d.get("output_format_idx")
+                if fmt_idx is None:
+                    fmt_idx = d.get("prores_profile")
+                if fmt_idx is not None:
+                    self.output_format_idx = fmt_idx
             except (OSError, json.JSONDecodeError) as e:
                 print(f"[WARN] Failed to load config: {e}")
 
@@ -313,6 +324,8 @@ class CameraState:
     @property
     def shutter_angle(self):
         """Convert exposure value to approximate shutter angle at current fps."""
+        if self.exposure is None or self.fps is None:
+            return 180
         # exposure_time_absolute is in 100µs units for most UVC cams
         exp_sec = self.exposure / 10000.0
         angle = exp_sec * self.fps * 360
@@ -321,7 +334,9 @@ class CameraState:
     @property
     def focus_pct(self):
         """Focus position as 0–100 percentage of range."""
-        return int((self.focus / max(self.focus_max, 1)) * 100)
+        f = self.focus if self.focus is not None else 0
+        fm = self.focus_max if self.focus_max is not None else 255
+        return int((f / max(fm, 1)) * 100)
 
     @property
     def remaining_storage_info(self):
@@ -337,11 +352,13 @@ class CameraState:
             # Estimate bitrate from format definition
             fmt  = self.output_format
             mbps = fmt.get("est_mbps", 50)
+            if mbps is None: mbps = 50
 
             # Adjust for resolution (simple heuristic)
-            if "1280x720" in str(self.resolution):
+            res = str(self.resolution) if self.resolution else "3840x2160"
+            if "1280x720" in res:
                 mbps = max(1, mbps // 3)
-            elif "1920x1080" in str(self.resolution):
+            elif "1920x1080" in res:
                 mbps = max(1, mbps // 2)
 
             # Calculate minutes: (GB * 8000 / Mbps) / 60

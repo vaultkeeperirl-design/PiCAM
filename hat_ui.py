@@ -964,8 +964,9 @@ class HatUI:
         draw.text((3,y), f"{res}  {s.fps}fps", fill=C_WHITE, font=sm); y+=14
         draw.text((3,y), s.format_label, fill=C_MAGENTA, font=sm); y+=13
         ae = "AE" if s.auto_exp else f"{s.shutter_angle:.0f}°"
-        draw.text((3,y), f"EXP  {ae}   ISO~{s.gain*10}", fill=C_AMBER, font=xs); y+=12
-        wb = "AWB" if s.auto_wb else f"{s.wb_temp}K"
+        gain = s.gain if s.gain is not None else 0
+        draw.text((3,y), f"EXP  {ae}   ISO~{gain*10}", fill=C_AMBER, font=xs); y+=12
+        wb = "AWB" if s.auto_wb else f"{s.wb_temp or 5600}K"
         draw.text((3,y), f"WB   {wb}", fill=C_CYAN, font=xs); y+=12
         af = "AF" if s.auto_focus else f"MF {s.focus_pct}%"
         pk = "  PKG" if getattr(s,'focus_peaking',False) else ""
@@ -973,8 +974,9 @@ class HatUI:
         if not s.audio_enabled:   aud, ac = "No mic", C_MGRAY
         elif s.audio_muted:       aud, ac = "MUTED",  C_RED
         else:
-            sign = "+" if s.mic_gain_db >= 0 else ""
-            aud, ac = f"Mic  {sign}{s.mic_gain_db}dB", C_GREEN
+            mg = s.mic_gain_db if s.mic_gain_db is not None else 0
+            sign = "+" if mg >= 0 else ""
+            aud, ac = f"Mic  {sign}{mg}dB", C_GREEN
         draw.text((3,y), aud, fill=ac, font=xs)
         draw.text((3, LCD_H-22), "K1=REC  K3=format", fill=C_MGRAY, font=xs)
 
@@ -989,8 +991,9 @@ class HatUI:
              C_AMBER if not s.auto_exp else C_MGRAY, outline=C_AMBER if sel_exp else None)
         m = 3+int(0.5*(LCD_W-48)); draw.line([m,y,m,y+8], fill=C_WHITE, width=1)
         y += 12
-        draw.text((3,y), f"ISO  ~{s.gain*10}", fill=g_col, font=sm); y+=12
-        _bar(draw, 3, y, LCD_W-48, 7, s.gain/500,
+        gain = s.gain if s.gain is not None else 0
+        draw.text((3,y), f"ISO  ~{gain*10}", fill=g_col, font=sm); y+=12
+        _bar(draw, 3, y, LCD_W-48, 7, gain/500,
              C_CYAN if sel_gain else C_MGRAY, outline=C_CYAN if sel_gain else None)
         cursor = "▲▼ Shutter" if sel_exp else "▲▼ ISO"
         draw.text((3, LCD_H-22), cursor, fill=C_AMBER if sel_exp else C_CYAN, font=xs)
@@ -1000,8 +1003,9 @@ class HatUI:
         y  = 20; xs = self._font_xs; sm = self._font_sm
         draw.text((3,y), "AUTO" if s.auto_wb else "MANUAL",
                   fill=C_GREEN if s.auto_wb else C_WHITE, font=sm); y+=14
-        draw.text((3,y), f"{s.wb_temp} K", fill=C_CYAN, font=self._font_lg); y+=20
-        _bar(draw, 3, y, LCD_W-48, 10, (s.wb_temp-2000)/8000, C_CYAN); y+=11
+        wb = s.wb_temp if s.wb_temp is not None else 5600
+        draw.text((3,y), f"{wb} K", fill=C_CYAN, font=self._font_lg); y+=20
+        _bar(draw, 3, y, LCD_W-48, 10, (wb-2000)/8000, C_CYAN); y+=11
         for k, lbl in [(3200,"3.2"),(5600,"D"),(6500,"6.5")]:
             mx = 3+int(((k-2000)/8000)*(LCD_W-48))
             draw.line([mx,y-11,mx,y-1], fill=C_WHITE, width=1)
@@ -1024,7 +1028,9 @@ class HatUI:
             tx = 3+int(frac*(LCD_W-48))
             draw.line([tx,y+14,tx,y+18], fill=C_MGRAY, width=1)
         y+=22
-        draw.text((3,y), f"val {s.focus}/{s.focus_max}", fill=C_MGRAY, font=xs); y+=12
+        f = s.focus if s.focus is not None else 0
+        fm = s.focus_max if s.focus_max is not None else 255
+        draw.text((3,y), f"val {f}/{fm}", fill=C_MGRAY, font=xs); y+=12
         pk_on = getattr(s,'focus_peaking',False)
         draw.text((3,y), f"Peaking  {'ON ●' if pk_on else 'OFF'}",
                   fill=C_GREEN if pk_on else C_MGRAY, font=xs)
@@ -1076,12 +1082,13 @@ class HatUI:
         draw.text((14,y),"-60",fill=C_MGRAY,font=xs)
         draw.text((45,y),"-12",fill=C_MGRAY,font=xs)
         draw.text((60,y),"-6", fill=C_MGRAY,font=xs); y+=11
-        sign = "+" if s.mic_gain_db >= 0 else ""
-        draw.text((3,y), f"Gain  {sign}{s.mic_gain_db} dB", fill=C_WHITE, font=sm); y+=12
+        mg = s.mic_gain_db if s.mic_gain_db is not None else 0
+        sign = "+" if mg >= 0 else ""
+        draw.text((3,y), f"Gain  {sign}{mg} dB", fill=C_WHITE, font=sm); y+=12
         mid = (LCD_W-50)//2
         draw.rectangle([3,y,LCD_W-48,y+8], fill=C_BAR_BG)
         draw.line([3+mid,y,3+mid,y+8], fill=C_MGRAY, width=1)
-        norm   = (s.mic_gain_db+20)/40
+        norm   = (mg+20)/40
         fill_x = int(norm*(LCD_W-50))
         if norm >= 0.5:
             draw.rectangle([3+mid,y,3+fill_x,y+8], fill=C_GREEN)
