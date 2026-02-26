@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -52,7 +52,7 @@ jobs:
           mv dist/obsbot_capture.exe dist/obsbot_capture_windows.exe
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: obsbot_capture_${{ matrix.os }}
           path: dist/obsbot_capture*
@@ -63,31 +63,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
+          pattern: obsbot_capture_*
           path: artifacts
+          merge-multiple: true
 
       - name: Prepare release assets
         run: |
           mkdir release_assets
-          find artifacts -type f \( -name "obsbot_capture_linux" -o -name "obsbot_capture_windows.exe" \) -exec cp {} release_assets/ \;
+          cp artifacts/obsbot_capture* release_assets/
           ls -l release_assets/
 
-      - name: Update Nightly Tag
-        run: |
-          git config --global user.email "action@github.com"
-          git config --global user.name "GitHub Action"
-          git tag -f nightly
-          git push -f origin nightly
+      - name: Delete existing Nightly Release
+        uses: dev-drprasad/delete-tag-and-release@v1.1
+        with:
+          tag_name: nightly
+          delete_release: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Wait a moment to ensure GitHub API propagates deletion
+      - name: Wait for deletion
+        run: sleep 5
 
       - name: Create Nightly Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly
           prerelease: true
           files: release_assets/*
           name: "Nightly Build"
-          body: "Automatic nightly build from main."
+          body: |
+            Automatic nightly build from main.
+            Commit: ${{ github.sha }}
+            Date: ${{ github.event.head_commit.timestamp }}
