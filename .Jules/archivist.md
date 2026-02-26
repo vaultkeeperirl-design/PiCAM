@@ -24,3 +24,8 @@
 
 **Learning:** Users on Raspberry Pi OS Bookworm face `externally-managed-environment` errors when following manual setup instructions, and confusion arises from `resolution` not persisting like other settings.
 **Action:** Updated `pip` commands to include `--break-system-packages` (matching `install.sh`), added a troubleshooting entry, and explicitly documented which settings persist vs. which reset (Resolution).
+
+## 2026-02-26 - Output Format Ambiguity
+
+**Learning:** Users had to cross-reference a table of formats with a separate list of CLI keys to construct the correct `--format` command, adding unnecessary cognitive load.
+**Action:** Integrated the CLI keys directly into the "Output Formats" table in `README.md`, removing the redundant list and making the connection explicit.
