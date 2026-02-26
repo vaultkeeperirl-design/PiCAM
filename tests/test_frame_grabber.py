@@ -5,32 +5,10 @@ import os
 import threading
 import time
 
-# 1. Mock hardware/library modules BEFORE importing hat_ui
-sys.modules['RPi'] = MagicMock()
-sys.modules['RPi.GPIO'] = MagicMock()
-sys.modules['spidev'] = MagicMock()
-sys.modules['cv2'] = MagicMock()
-sys.modules['numpy'] = MagicMock()
-
-# Mock PIL
-mock_pil = MagicMock()
-sys.modules['PIL'] = mock_pil
-sys.modules['PIL.Image'] = mock_pil.Image
-sys.modules['PIL.ImageDraw'] = mock_pil.ImageDraw
-sys.modules['PIL.ImageFont'] = mock_pil.ImageFont
-
-# Configure PIL mocks
-mock_image = MagicMock()
-mock_pil.Image.new.return_value = mock_image
-mock_pil.Image.fromarray.return_value = mock_image
-mock_image.resize.return_value = mock_image
-mock_image.convert.return_value = mock_image
-mock_image.copy.return_value = mock_image
-
-# 2. Add project root to path
+# Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 3. Import hat_ui (mocks active)
+# Import hat_ui (might be already imported by other tests, so we can't rely on sys.modules blocking)
 try:
     import hat_ui
     from hat_ui import FrameGrabber
@@ -43,32 +21,24 @@ class TestFrameGrabber(unittest.TestCase):
         if FrameGrabber is None:
             self.skipTest("hat_ui could not be imported")
 
-        # Explicitly set PIL objects in hat_ui namespace if they are missing
-        # This fixes NameError: name 'Image' is not defined inside hat_ui methods
-        if not hasattr(hat_ui, 'Image'):
-            hat_ui.Image = mock_pil.Image
-        if not hasattr(hat_ui, 'ImageDraw'):
-            hat_ui.ImageDraw = mock_pil.ImageDraw
-        if not hasattr(hat_ui, 'ImageFont'):
-            hat_ui.ImageFont = mock_pil.ImageFont
+        # Create mocks
+        self.mock_image_cls = MagicMock()
+        self.mock_draw_cls = MagicMock()
+        self.mock_font_cls = MagicMock()
+        self.mock_cv2 = MagicMock()
 
-        # Configure font.getmask2 return value to fix unpack error
-        # ImageDraw.text calls draw_text -> font.getmask2 which expects (mask, offset)
-        mock_font = MagicMock()
-        mock_font.getmask2.return_value = (MagicMock(), (0, 0))
-        mock_pil.ImageFont.load_default.return_value = mock_font
-        mock_pil.ImageFont.truetype.return_value = mock_font
+        # Setup standard mock behaviors
+        self.mock_image = MagicMock()
+        self.mock_image_cls.new.return_value = self.mock_image
+        self.mock_image_cls.fromarray.return_value = self.mock_image
+        self.mock_image.resize.return_value = self.mock_image
+        self.mock_image.convert.return_value = self.mock_image
+        self.mock_image.copy.return_value = self.mock_image
 
-        # Explicitly inject cv2 and force CV2_OK to True
-        # This ensures FrameGrabber logic (which checks CV2_OK) runs
-        hat_ui.cv2 = sys.modules['cv2']
-        hat_ui.CV2_OK = True
+        self.mock_draw_instance = MagicMock()
+        self.mock_draw_cls.Draw.return_value = self.mock_draw_instance
 
-        # Reset CV2 mock for each test
-        self.mock_cv2 = sys.modules['cv2']
-        self.mock_cv2.reset_mock()
-
-        # Mock constants usually found in cv2
+        # Mock cv2 constants and behaviors
         self.mock_cv2.CAP_V4L2 = 200
         self.mock_cv2.CAP_PROP_FRAME_WIDTH = 3
         self.mock_cv2.CAP_PROP_FRAME_HEIGHT = 4
@@ -76,12 +46,36 @@ class TestFrameGrabber(unittest.TestCase):
         self.mock_cv2.CAP_PROP_BUFFERSIZE = 38
         self.mock_cv2.COLOR_BGR2RGB = 4
         self.mock_cv2.VideoWriter_fourcc.return_value = 12345
+        self.mock_cv2.cvtColor.return_value = MagicMock(shape=(100, 100, 3))
+
+        # Patch dependencies directly in hat_ui module
+        # create=True handles cases where the module failed to import optional deps originally
+        self.patchers = [
+            patch.object(hat_ui, 'Image', self.mock_image_cls, create=True),
+            patch.object(hat_ui, 'ImageDraw', self.mock_draw_cls, create=True),
+            patch.object(hat_ui, 'ImageFont', self.mock_font_cls, create=True),
+            patch.object(hat_ui, 'cv2', self.mock_cv2, create=True),
+            patch.object(hat_ui, 'CV2_OK', True, create=True),
+            patch.object(hat_ui, 'PIL_OK', True, create=True),
+        ]
+
+        for p in self.patchers:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patchers:
+            p.stop()
 
     def test_init_state(self):
         fg = FrameGrabber("/dev/video0")
         self.assertFalse(fg._fed)
         self.assertFalse(fg._ok)
         self.assertIsNotNone(fg._placeholder)
+
+        # Verify placeholder creation used our mocks
+        self.mock_image_cls.new.assert_called()
+        self.mock_draw_cls.Draw.assert_called()
+        self.mock_draw_instance.text.assert_called()
 
     def test_feed_frame_gui_mode(self):
         """
@@ -90,10 +84,7 @@ class TestFrameGrabber(unittest.TestCase):
         """
         fg = FrameGrabber("/dev/video0")
 
-        mock_frame = MagicMock() # numpy array mock
-        # mock cvtColor to return something valid (dummy numpy array behavior)
-        self.mock_cv2.cvtColor.return_value = MagicMock(shape=(100, 100, 3))
-
+        mock_frame = MagicMock()
         fg.feed_frame(mock_frame)
 
         self.assertTrue(fg._fed, "Should be marked as fed")
@@ -102,8 +93,7 @@ class TestFrameGrabber(unittest.TestCase):
 
         # Verify conversions happened
         self.mock_cv2.cvtColor.assert_called_once()
-        # Ensure we are checking calls on the EXACT object hat_ui is using
-        hat_ui.Image.fromarray.assert_called_once()
+        self.mock_image_cls.fromarray.assert_called_once()
 
     @patch('time.time')
     @patch('time.sleep')
@@ -118,13 +108,12 @@ class TestFrameGrabber(unittest.TestCase):
         mock_time.return_value = 1000.0
 
         # Side effect for sleep: stop the thread to break the infinite loop
-        # The loop we want to break is: while not self._stop.is_set(): time.sleep(0.1)
         def sleep_side_effect(seconds):
             fg._stop.set()
 
         mock_sleep.side_effect = sleep_side_effect
 
-        # Run the method (not in a separate thread, blocking call)
+        # Run the method
         fg._run()
 
         # Verify VideoCapture was NOT called
@@ -139,9 +128,7 @@ class TestFrameGrabber(unittest.TestCase):
         fg = FrameGrabber("/dev/video0")
         fg._fed = False
 
-        # Make time.time return start + 20s to simulate timeout expiration immediately
-        # 1. deadline calc: time.time() (1000) -> deadline = 1015
-        # 2. while check: time.time() (1020) -> loop terminates
+        # Make time.time return start + 20s to simulate timeout expiration
         mock_time.side_effect = [1000.0, 1020.0, 1021.0, 1022.0]
 
         # Mock VideoCapture
