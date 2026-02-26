@@ -28,7 +28,7 @@ live audio metering, and a **Waveshare 1.44" LCD HAT** viewfinder.
 ## Architecture
 
 - **`obsbot_capture.py`**: The main application controller. It manages:
-  - **Main Thread**: Handles OpenCV GUI (HDMI preview), keyboard input, and the FFmpeg recording process.
+  - **Main Thread**: Handles OpenCV GUI (HDMI preview) or Rich TUI (Headless), keyboard input, and the FFmpeg recording process.
   - **`CameraState`**: A shared data class acting as the source of truth for all settings (exposure, focus, format).
 - **`hat_ui.py`**: Run as a daemon thread. It manages:
   - **SPI Display**: Renders the 128x128 UI at ~15fps.
@@ -74,15 +74,15 @@ The `install.sh` script performs the following critical system changes:
 
 Press **P** (keyboard) or use the **FORMAT page** on the HAT to cycle between:
 
-| # | Format | Container | ~Bitrate 4K | Notes |
+| CLI Key | Format | Container | ~Bitrate 4K | Notes |
 |---|---|---|---|---|
-| 1 | **H.264 High** | `.mp4` | ~50 Mbps | ★ Best for Filmora — just drag & drop |
-| 2 | **H.264 Std** | `.mp4` | ~20 Mbps | Filmora, smaller files |
-| 3 | **H.265 / HEVC** | `.mp4` | ~25 Mbps | Efficient 4K, Filmora compatible |
-| 4 | **MKV H.264** | `.mkv` | ~50 Mbps | Flexible container, Filmora compatible |
-| 5 | **ProRes HQ** | `.mov` | ~220 Mbps | Maximum quality, large files |
-| 6 | **ProRes LT** | `.mov` | ~100 Mbps | Edit-ready, reasonable size |
-| 7 | **ProRes Proxy** | `.mov` | ~40 Mbps | Offline / rough cut |
+| `h264_high` | **H.264 High** | `.mp4` | ~50 Mbps | ★ Best for Filmora — just drag & drop |
+| `h264_std` | **H.264 Std** | `.mp4` | ~20 Mbps | Filmora, smaller files |
+| `h265` | **H.265 / HEVC** | `.mp4` | ~25 Mbps | Efficient 4K, Filmora compatible |
+| `mkv_h264` | **MKV H.264** | `.mkv` | ~50 Mbps | Flexible container, Filmora compatible |
+| `prores_hq` | **ProRes HQ** | `.mov` | ~220 Mbps | Maximum quality, large files |
+| `prores_lt` | **ProRes LT** | `.mov` | ~100 Mbps | Edit-ready, reasonable size |
+| `prores_proxy` | **ProRes Proxy** | `.mov` | ~40 Mbps | Offline / rough cut |
 
 > **Pi 5 note:** H.264 and H.265 are software-encoded (no hardware encoder for
 > arbitrary V4L2 input). At 4K they push the CPU hard — if you see dropped frames,
@@ -96,9 +96,6 @@ python3 obsbot_capture.py --format h264_high     # MP4 H.264 — Filmora default
 python3 obsbot_capture.py --format h265          # MP4 HEVC
 python3 obsbot_capture.py --format prores_hq     # ProRes HQ .mov
 ```
-
-Available `--format` values: `h264_high`, `h264_std`, `h265`, `mkv_h264`,
-`prores_hq`, `prores_lt`, `prores_proxy`
 
 ---
 
