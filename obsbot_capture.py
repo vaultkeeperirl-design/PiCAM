@@ -376,6 +376,47 @@ class CameraState:
         except Exception:
             return (0, 0)
 
+    def refresh_clip_number(self):
+        """
+        Scan output directory for existing clips from today to find the next available number.
+        Prevents overwriting files if the app is restarted.
+        """
+        if not self.output_dir.exists():
+            return
+
+        today_str = datetime.datetime.now().strftime("%Y%m%d")
+        max_num = 0
+
+        # Pattern: CLIP_YYYYMMDD_####.ext
+        # We look for files starting with CLIP_{today}_
+        prefix = f"CLIP_{today_str}_"
+
+        try:
+            for f in self.output_dir.iterdir():
+                # Extract the #### part
+                # f.name might be CLIP_20250220_0001.mp4
+                try:
+                    if f.name.startswith(prefix):
+                        # Standard format is CLIP_YYYYMMDD_####.ext
+                        # We use rsplit to handle dots in filenames gracefully if needed,
+                        # but simpler is assuming standard structure.
+                        parts = f.stem.split('_')
+                        # Expecting ["CLIP", "YYYYMMDD", "####"]
+                        if len(parts) >= 3:
+                            num_part = parts[-1]  # Should be ####
+                            if num_part.isdigit():
+                                num = int(num_part)
+                                if num > max_num:
+                                    max_num = num
+                except ValueError:
+                    pass
+        except OSError:
+            pass
+
+        if max_num > 0:
+            self.clip_number = max_num + 1
+            print(f"[INFO] Found existing clips. Next clip: #{self.clip_number:04d}")
+
 # ─────────────────────────────────────────────
 #  V4L2 Control Layer
 # ─────────────────────────────────────────────
@@ -1829,6 +1870,9 @@ Examples:
     if args.outdir:  state.output_dir      = Path(args.outdir)
     if args.audio_device: state.audio_device = args.audio_device
     if args.no_audio:     state.audio_enabled = False
+
+    # Ensure we don't overwrite existing clips
+    state.refresh_clip_number()
 
     # Start HAT UI if requested
     hat = None
