@@ -875,6 +875,7 @@ def run_gui(state: CameraState, hat=None):
             if state.ffmpeg_proc and state.ffmpeg_proc.poll() is not None:
                 print(f"[WARN] FFmpeg died (code {state.ffmpeg_proc.returncode})")
                 stop_recording(state, cap=cap, cap_w=actual_w, cap_h=actual_h, cap_fps=state.fps)
+                show_toast("REC FAILED", COLOR_RED, 4.0)
             else:
                 time.sleep(0.033)
                 if last_frame is None:
@@ -906,10 +907,15 @@ def run_gui(state: CameraState, hat=None):
         if state.record_trigger:
             state.record_trigger = False
             if state.recording:
+                n = state.clip_number
                 stop_recording(state, cap=cap,
                                cap_w=actual_w, cap_h=actual_h, cap_fps=state.fps)
+                show_toast(f"CLIP {n:04d} SAVED", COLOR_GREEN)
             else:
-                start_recording(state, cap=cap)
+                if start_recording(state, cap=cap):
+                    show_toast("REC STARTED", COLOR_RED)
+                else:
+                    show_toast("REC ERROR", COLOR_RED, 3.0)
 
         # ── Feed frame to HAT live view ──────────────────────────────
         if hat and hat.grabber and not state.recording:
@@ -1028,10 +1034,15 @@ def run_gui(state: CameraState, hat=None):
             break
         elif key == ord('r') or key == ord('R'):
             if state.recording:
+                n = state.clip_number
                 stop_recording(state, cap=cap,
                                cap_w=actual_w, cap_h=actual_h, cap_fps=state.fps)
+                show_toast(f"CLIP {n:04d} SAVED", COLOR_GREEN)
             else:
-                start_recording(state, cap=cap)
+                if start_recording(state, cap=cap):
+                    show_toast("REC STARTED", COLOR_RED)
+                else:
+                    show_toast("REC ERROR", COLOR_RED, 3.0)
         elif key == ord('h') or key == ord('H'):
             show_help = not show_help
 
