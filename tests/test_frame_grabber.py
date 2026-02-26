@@ -52,6 +52,13 @@ class TestFrameGrabber(unittest.TestCase):
         if not hasattr(hat_ui, 'ImageFont'):
             hat_ui.ImageFont = mock_pil.ImageFont
 
+        # Configure font.getmask2 return value to fix unpack error
+        # ImageDraw.text calls draw_text -> font.getmask2 which expects (mask, offset)
+        mock_font = MagicMock()
+        mock_font.getmask2.return_value = (MagicMock(), (0, 0))
+        mock_pil.ImageFont.load_default.return_value = mock_font
+        mock_pil.ImageFont.truetype.return_value = mock_font
+
         # Explicitly inject cv2 and force CV2_OK to True
         # This ensures FrameGrabber logic (which checks CV2_OK) runs
         hat_ui.cv2 = sys.modules['cv2']
