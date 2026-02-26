@@ -17,3 +17,8 @@
 
 **Learning:** The CI pipeline (`ci.yml`) only performed linting, leaving logic errors undetected until release.
 **Action:** Added a unit test step (`python3 -m unittest discover tests`) to the CI workflow to ensure tests pass on every push and pull request.
+
+## 2026-02-22 - [Nightly Build Automation]
+
+**Learning:** To support users on Windows and Linux without manual builds, a "rolling release" pattern is effective.
+**Action:** Created `.github/workflows/nightly.yml` which builds standalone executables using `pyinstaller` on `ubuntu-latest` and `windows-latest`. The workflow force-updates a `nightly` tag and overwrites release assets (`obsbot_capture_linux`, `obsbot_capture_windows.exe`) on every push to `main`. Linux builds require `libasound2-dev` and `portaudio19-dev` for `sounddevice` support.
