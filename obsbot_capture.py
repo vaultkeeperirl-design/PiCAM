@@ -647,19 +647,27 @@ def stop_recording(state: CameraState, cap=None, cap_w=3840, cap_h=2160, cap_fps
 
     if state.ffmpeg_proc.poll() is None:
         try:
-            state.ffmpeg_proc.stdin.write(b"q")
-            state.ffmpeg_proc.stdin.flush()
+            try:
+                state.ffmpeg_proc.stdin.write(b"q")
+                state.ffmpeg_proc.stdin.flush()
+            except (BrokenPipeError, AttributeError):
+                print("[WARN] FFmpeg stdin broken (already exited?)")
+
             state.ffmpeg_proc.wait(timeout=10)
-        except BrokenPipeError:
-            pass
         except subprocess.TimeoutExpired:
             print("[WARN] FFmpeg timeout — killing")
-            state.ffmpeg_proc.kill()
-            state.ffmpeg_proc.wait()
+            try:
+                state.ffmpeg_proc.kill()
+                state.ffmpeg_proc.wait()
+            except Exception as e:
+                print(f"[ERROR] Failed to kill FFmpeg: {e}")
         except Exception as e:
             print(f"[WARN] Stop error: {e}")
-            try: state.ffmpeg_proc.kill()
-            except Exception: pass
+            try:
+                state.ffmpeg_proc.kill()
+                state.ffmpeg_proc.wait()
+            except Exception as e2:
+                print(f"[ERROR] Failed to kill FFmpeg after stop error: {e2}")
     else:
         print(f"[WARN] FFmpeg had already exited (code {state.ffmpeg_proc.returncode})")
 
