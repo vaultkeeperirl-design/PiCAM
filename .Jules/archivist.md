@@ -1,0 +1,31 @@
+# Archivist Journal
+
+## 2025-02-21 - Contributor Onboarding Gaps
+
+**Learning:** The project lacked clear instructions for new contributors on how to set up the environment and run tests, potentially stalling community involvement.
+**Action:** Added a `Contributing` section to `README.md` detailing dependencies, test execution, and code style. Also clarified the `Architecture` section to better explain the threading model.
+
+## 2026-02-22 - Non-Pi Development Friction
+
+**Learning:** New contributors on non-Pi platforms (macOS/Windows) were blocked by strict hardware requirements (Raspberry Pi, HAT) in the setup guide, unaware they could run unit tests locally.
+**Action:** Split setup instructions into "Raspberry Pi" (Production) and "Local / Non-Pi" (Development) sections, clarified `install.sh` vs `requirements.txt`, and added "General Diagnostics" to troubleshooting.
+
+## 2026-02-23 - Linux Audio Deps & Linting Clarity
+
+**Learning:** Linux developers faced friction due to missing system audio dependencies for `sounddevice` and lack of documented linting commands.
+**Action:** Documented `libasound2-dev` / `portaudio19-dev` requirements and added explicit `pylint` instructions.
+
+## 2026-02-24 - Pi Setup Discrepancy
+
+**Learning:** Manual setup instructions for Raspberry Pi were incomplete and outdated compared to `install.sh` (missing `lgpio` and dev packages), leading to potential confusion for users auditing the setup.
+**Action:** Updated `README.md` Pi setup instructions to match `install.sh` exactly, including the critical `lgpio` shim for Pi 5.
+
+## 2026-02-25 - Bookworm Env & Persistence Clarity
+
+**Learning:** Users on Raspberry Pi OS Bookworm face `externally-managed-environment` errors when following manual setup instructions, and confusion arises from `resolution` not persisting like other settings.
+**Action:** Updated `pip` commands to include `--break-system-packages` (matching `install.sh`), added a troubleshooting entry, and explicitly documented which settings persist vs. which reset (Resolution).
+
+## 2026-02-26 - Output Format Ambiguity
+
+**Learning:** Users had to cross-reference a table of formats with a separate list of CLI keys to construct the correct `--format` command, adding unnecessary cognitive load.
+**Action:** Integrated the CLI keys directly into the "Output Formats" table in `README.md`, removing the redundant list and making the connection explicit.

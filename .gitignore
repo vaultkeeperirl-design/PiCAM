@@ -1,2 +1,36 @@
 __pycache__/
 *.pyc
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Environments
+.env
+.venv/
+venv/
+ENV/
+
+# Unit test / coverage
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Media
+*.mp4
+*.mov
+*.mkv
+*.avi

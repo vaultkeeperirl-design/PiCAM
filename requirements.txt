@@ -1,6 +1,6 @@
 rich
 sounddevice
-spidev
+spidev; sys_platform == 'linux'
 Pillow
 numpy
 opencv-python-headless

@@ -1,4 +1,4 @@
-## 2025-02-20 - [Insecure and Non-Atomic Config Saving]
+## 2026-02-22 - Storage Calculation Bug on First Run
 
-**Learning:** The configuration file `~/.obsbot_cinepi.json` was being written using `Path.write_text`, which is not atomic and does not set restrictive permissions. This poses a risk of data corruption (if power fails during write) and potential information leakage.
-**Action:** Implemented an atomic write pattern using `os.open` (with `O_CREAT | O_TRUNC | O_WRONLY` and mode `0o600`), `os.fdopen`, `json.dump`, `f.flush()`, `os.fsync()`, and `os.replace`. This ensures the file is fully written to disk before replacing the old one, and has correct permissions from the start. Added a unit test `tests/test_save_config.py` to verify this behavior using mocks.
+**Learning:** The application initialized `output_dir` to a non-existent directory on first run, causing `shutil.disk_usage` to fail or logic to return (0, 0) immediately. This resulted in the UI showing "0 mins remaining" even when disk space was ample, which is a confusing user experience.
+**Action:** Implemented a recursive parent directory check in `CameraState.remaining_storage_info`. If the target directory doesn't exist, the logic now walks up the directory tree to find the nearest existing ancestor (likely the mount point or user home) to estimate available space correctly. Added `tests/test_storage.py` validation for this fallback behavior.

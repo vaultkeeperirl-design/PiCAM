@@ -20,6 +20,7 @@ import sys
 import signal
 import json
 import datetime
+import shutil
 from pathlib import Path
 
 # ─────────────────────────────────────────────
@@ -105,6 +106,7 @@ OUTPUT_FORMATS = [
         "label":    "H.264 High",
         "ext":      "mp4",
         "note":     "~50Mbps · Filmora ★",
+        "est_mbps": 50,
         "cpu_warn": True,           # flag for 4K CPU warning
         "vcodec":   "libx264",
         "vparams":  ["-crf","18","-preset","faster","-pix_fmt","yuv420p"],
@@ -117,6 +119,7 @@ OUTPUT_FORMATS = [
         "label":    "H.264 Std",
         "ext":      "mp4",
         "note":     "~20Mbps · smaller files",
+        "est_mbps": 20,
         "cpu_warn": True,
         "vcodec":   "libx264",
         "vparams":  ["-crf","23","-preset","faster","-pix_fmt","yuv420p"],
@@ -129,6 +132,7 @@ OUTPUT_FORMATS = [
         "label":    "H.265 / HEVC",
         "ext":      "mp4",
         "note":     "~25Mbps · efficient 4K",
+        "est_mbps": 25,
         "cpu_warn": True,
         "vcodec":   "libx265",
         "vparams":  ["-crf","20","-preset","faster","-pix_fmt","yuv420p"],
@@ -141,6 +145,7 @@ OUTPUT_FORMATS = [
         "label":    "MKV H.264",
         "ext":      "mkv",
         "note":     "~50Mbps · flexible container",
+        "est_mbps": 50,
         "cpu_warn": True,
         "vcodec":   "libx264",
         "vparams":  ["-crf","18","-preset","faster","-pix_fmt","yuv420p"],
@@ -153,6 +158,7 @@ OUTPUT_FORMATS = [
         "label":    "ProRes HQ",
         "ext":      "mov",
         "note":     "~220Mbps · max quality",
+        "est_mbps": 220,
         "cpu_warn": False,
         "vcodec":   "prores_ks",
         "vparams":  ["-profile:v","3","-vendor","ap10","-pix_fmt","yuv422p10le"],
@@ -165,6 +171,7 @@ OUTPUT_FORMATS = [
         "label":    "ProRes LT",
         "ext":      "mov",
         "note":     "~100Mbps · edit-ready",
+        "est_mbps": 100,
         "cpu_warn": False,
         "vcodec":   "prores_ks",
         "vparams":  ["-profile:v","1","-vendor","ap10","-pix_fmt","yuv422p10le"],
@@ -177,6 +184,7 @@ OUTPUT_FORMATS = [
         "label":    "ProRes Proxy",
         "ext":      "mov",
         "note":     "~40Mbps · offline / rough cut",
+        "est_mbps": 40,
         "cpu_warn": False,
         "vcodec":   "prores_ks",
         "vparams":  ["-profile:v","0","-vendor","ap10","-pix_fmt","yuv422p10le"],
@@ -204,6 +212,7 @@ OBSBOT_USB_NAMES   = ["obsbot", "meet", "usb audio"]  # substrings to match
 # ─────────────────────────────────────────────
 class CameraState:
     def __init__(self):
+        self.mode        = "gui"        # "gui", "headless", "diag"
         self.device      = DEFAULT_DEVICE
         self.resolution  = DEFAULT_RES
         self.fps         = DEFAULT_FPS
@@ -239,15 +248,26 @@ class CameraState:
         if CONFIG_FILE.exists():
             try:
                 d = json.loads(CONFIG_FILE.read_text())
-                self.exposure       = d.get("exposure", self.exposure)
-                self.gain           = d.get("gain", self.gain)
-                self.wb_temp        = d.get("wb_temp", self.wb_temp)
-                self.fps            = d.get("fps", self.fps)
-                self.focus          = d.get("focus", self.focus)
-                self.auto_focus     = d.get("auto_focus", self.auto_focus)
-                self.mic_gain_db    = d.get("mic_gain_db", self.mic_gain_db)
-                self.output_format_idx = d.get("output_format_idx",
-                                   d.get("prores_profile", self.output_format_idx))  # legacy compat
+
+                # Robust loading: ignore None values to preserve defaults
+                def _get(key, default):
+                    val = d.get(key)
+                    return val if val is not None else default
+
+                self.exposure       = _get("exposure", self.exposure)
+                self.gain           = _get("gain", self.gain)
+                self.wb_temp        = _get("wb_temp", self.wb_temp)
+                self.fps            = _get("fps", self.fps)
+                self.focus          = _get("focus", self.focus)
+                self.auto_focus     = _get("auto_focus", self.auto_focus)
+                self.mic_gain_db    = _get("mic_gain_db", self.mic_gain_db)
+
+                # Special handling for legacy keys
+                fmt_idx = d.get("output_format_idx")
+                if fmt_idx is None:
+                    fmt_idx = d.get("prores_profile")
+                if fmt_idx is not None:
+                    self.output_format_idx = fmt_idx
             except (OSError, json.JSONDecodeError) as e:
                 print(f"[WARN] Failed to load config: {e}")
 
@@ -304,6 +324,8 @@ class CameraState:
     @property
     def shutter_angle(self):
         """Convert exposure value to approximate shutter angle at current fps."""
+        if self.exposure is None or self.fps is None:
+            return 180
         # exposure_time_absolute is in 100µs units for most UVC cams
         exp_sec = self.exposure / 10000.0
         angle = exp_sec * self.fps * 360
@@ -312,33 +334,40 @@ class CameraState:
     @property
     def focus_pct(self):
         """Focus position as 0–100 percentage of range."""
-        return int((self.focus / max(self.focus_max, 1)) * 100)
+        f = self.focus if self.focus is not None else 0
+        fm = self.focus_max if self.focus_max is not None else 255
+        return int((f / max(fm, 1)) * 100)
 
     @property
     def remaining_storage_info(self):
         """Returns tuple (free_gb, remaining_minutes) or (0, 0) on error."""
         try:
             if not self.output_dir.exists():
-                return (0, 0)
+                # If output directory doesn't exist yet, check parent
+                # This prevents "0 mins remaining" on first run
+                p = self.output_dir
+                while not p.exists() and p.parent != p:
+                    p = p.parent
+                if not p.exists():
+                    return (0, 0)
+                path_to_check = p
+            else:
+                path_to_check = self.output_dir
 
             # Use shutil for cross-platform disk usage
-            import shutil
-            total, used, free = shutil.disk_usage(str(self.output_dir))
+            total, used, free = shutil.disk_usage(str(path_to_check))
             free_gb = free / (1024**3)
 
-            # Estimate bitrate from format note
+            # Estimate bitrate from format definition
             fmt  = self.output_format
-            note = fmt.get("note", "")
-            try:
-                # Extract numeric part from "~50Mbps"
-                mbps = int([w for w in note.replace("~", "").split() if "Mbps" in w][0].replace("Mbps", ""))
-            except Exception:
-                mbps = 50 # Default safe fallback
+            mbps = fmt.get("est_mbps", 50)
+            if mbps is None: mbps = 50
 
             # Adjust for resolution (simple heuristic)
-            if "1280x720" in str(self.resolution):
+            res = str(self.resolution) if self.resolution else "3840x2160"
+            if "1280x720" in res:
                 mbps = max(1, mbps // 3)
-            elif "1920x1080" in str(self.resolution):
+            elif "1920x1080" in res:
                 mbps = max(1, mbps // 2)
 
             # Calculate minutes: (GB * 8000 / Mbps) / 60
@@ -346,6 +375,47 @@ class CameraState:
             return (free_gb, mins)
         except Exception:
             return (0, 0)
+
+    def refresh_clip_number(self):
+        """
+        Scan output directory for existing clips from today to find the next available number.
+        Prevents overwriting files if the app is restarted.
+        """
+        if not self.output_dir.exists():
+            return
+
+        today_str = datetime.datetime.now().strftime("%Y%m%d")
+        max_num = 0
+
+        # Pattern: CLIP_YYYYMMDD_####.ext
+        # We look for files starting with CLIP_{today}_
+        prefix = f"CLIP_{today_str}_"
+
+        try:
+            for f in self.output_dir.iterdir():
+                # Extract the #### part
+                # f.name might be CLIP_20250220_0001.mp4
+                try:
+                    if f.name.startswith(prefix):
+                        # Standard format is CLIP_YYYYMMDD_####.ext
+                        # We use rsplit to handle dots in filenames gracefully if needed,
+                        # but simpler is assuming standard structure.
+                        parts = f.stem.split('_')
+                        # Expecting ["CLIP", "YYYYMMDD", "####"]
+                        if len(parts) >= 3:
+                            num_part = parts[-1]  # Should be ####
+                            if num_part.isdigit():
+                                num = int(num_part)
+                                if num > max_num:
+                                    max_num = num
+                except ValueError:
+                    pass
+        except OSError:
+            pass
+
+        if max_num > 0:
+            self.clip_number = max_num + 1
+            print(f"[INFO] Found existing clips. Next clip: #{self.clip_number:04d}")
 
 # ─────────────────────────────────────────────
 #  V4L2 Control Layer
@@ -429,7 +499,14 @@ def detect_audio_device(state: CameraState):
     (sounddevice index).  Falls back to default input if not found.
     """
     # ── ALSA device string for FFmpeg ──
-    result = subprocess.run(["arecord", "-l"], capture_output=True, text=True)
+    try:
+        result = subprocess.run(["arecord", "-l"], capture_output=True, text=True)
+    except FileNotFoundError:
+        print("[AUDIO] 'arecord' not found — audio input disabled")
+        state.audio_device  = None
+        state.audio_enabled = False
+        return
+
     alsa_card = None
     for line in result.stdout.splitlines():
         low = line.lower()
@@ -527,8 +604,11 @@ def audio_gain_linear(state: CameraState) -> float:
 
 def list_audio_devices():
     """Print all ALSA capture devices for diagnostics."""
-    result = subprocess.run(["arecord", "-l"], capture_output=True, text=True)
-    return result.stdout
+    try:
+        result = subprocess.run(["arecord", "-l"], capture_output=True, text=True)
+        return result.stdout
+    except FileNotFoundError:
+        return "  'arecord' not found (alsa-utils missing?)"
 # ─────────────────────────────────────────────
 #  FFmpeg Recording Engine
 # ─────────────────────────────────────────────
@@ -612,13 +692,28 @@ def start_recording(state: CameraState, cap=None) -> bool:
     print(f"[REC] Starting: {output_path}")
     print(f"[REC] Format: {state.format_label}  codec: {state.output_format['vcodec']}")
 
+    stderr_file = None
+    if state.mode == "headless":
+        try:
+            log_path = state.output_dir / "ffmpeg.log"
+            stderr_file = open(log_path, "a")
+            stderr_file.write(f"\n[{datetime.datetime.now()}] Starting recording {state.clip_name}\n")
+            stderr_file.flush()
+        except Exception as e:
+            print(f"[WARN] Failed to open log file: {e}")
+
     try:
-        state.ffmpeg_proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=None,    # show FFmpeg errors in terminal
-        )
+        try:
+            state.ffmpeg_proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_file,
+            )
+        finally:
+            if stderr_file:
+                stderr_file.close()
+
         time.sleep(0.8)
         if state.ffmpeg_proc.poll() is not None:
             print(f"[ERROR] FFmpeg exited immediately (code {state.ffmpeg_proc.returncode})")
@@ -788,6 +883,7 @@ def run_gui(state: CameraState, hat=None):
             if state.ffmpeg_proc and state.ffmpeg_proc.poll() is not None:
                 print(f"[WARN] FFmpeg died (code {state.ffmpeg_proc.returncode})")
                 stop_recording(state, cap=cap, cap_w=actual_w, cap_h=actual_h, cap_fps=state.fps)
+                show_toast("REC FAILED", COLOR_RED, 4.0)
             else:
                 time.sleep(0.033)
                 if last_frame is None:
@@ -819,10 +915,15 @@ def run_gui(state: CameraState, hat=None):
         if state.record_trigger:
             state.record_trigger = False
             if state.recording:
+                n = state.clip_number
                 stop_recording(state, cap=cap,
                                cap_w=actual_w, cap_h=actual_h, cap_fps=state.fps)
+                show_toast(f"CLIP {n:04d} SAVED", COLOR_GREEN)
             else:
-                start_recording(state, cap=cap)
+                if start_recording(state, cap=cap):
+                    show_toast("REC STARTED", COLOR_RED)
+                else:
+                    show_toast("REC ERROR", COLOR_RED, 3.0)
 
         # ── Feed frame to HAT live view ──────────────────────────────
         if hat and hat.grabber and not state.recording:
@@ -838,7 +939,7 @@ def run_gui(state: CameraState, hat=None):
 
         # ── Focus Peaking overlay (before all HUD text) ──
         if state.focus_peaking and NP_OK:
-            display = _apply_focus_peaking(display)
+            display = _apply_focus_peaking(display, gray=gray)
 
         # ── Tally Border (Recording Indicator) ──
         if state.recording:
@@ -915,7 +1016,7 @@ def run_gui(state: CameraState, hat=None):
 
         # Live Histogram
         if state.show_histogram:
-            _draw_histogram(display, PW, PH)
+            _draw_histogram(display, PW, PH, gray=gray)
 
         # Format Menu
         if time.time() - format_menu_timer < 3.0:
@@ -941,10 +1042,15 @@ def run_gui(state: CameraState, hat=None):
             break
         elif key == ord('r') or key == ord('R'):
             if state.recording:
+                n = state.clip_number
                 stop_recording(state, cap=cap,
                                cap_w=actual_w, cap_h=actual_h, cap_fps=state.fps)
+                show_toast(f"CLIP {n:04d} SAVED", COLOR_GREEN)
             else:
-                start_recording(state, cap=cap)
+                if start_recording(state, cap=cap):
+                    show_toast("REC STARTED", COLOR_RED)
+                else:
+                    show_toast("REC ERROR", COLOR_RED, 3.0)
         elif key == ord('h') or key == ord('H'):
             show_help = not show_help
 
@@ -953,28 +1059,34 @@ def run_gui(state: CameraState, hat=None):
             state.exposure = min(state.exposure + 50, 10000)
             if not state.auto_exp:
                 v4l2_set(state.device, V4L2_EXPOSURE, state.exposure)
+            show_toast(f"EXP {state.exposure}")
         elif key == ord('d'):                # exposure down
             state.exposure = max(state.exposure - 50, 50)
             if not state.auto_exp:
                 v4l2_set(state.device, V4L2_EXPOSURE, state.exposure)
+            show_toast(f"EXP {state.exposure}")
 
         # Gain / ISO
         elif key == ord('g'):
             state.gain = min(state.gain + 10, 500)
             v4l2_set(state.device, V4L2_GAIN, state.gain)
+            show_toast(f"ISO ~{state.gain * 10}")
         elif key == ord('f'):
             state.gain = max(state.gain - 10, 0)
             v4l2_set(state.device, V4L2_GAIN, state.gain)
+            show_toast(f"ISO ~{state.gain * 10}")
 
         # White balance
         elif key == ord('w'):
             state.wb_temp = min(state.wb_temp + 100, 10000)
             if not state.auto_wb:
                 v4l2_set(state.device, V4L2_WB_TEMP, state.wb_temp)
+            show_toast(f"WB {state.wb_temp}K")
         elif key == ord('s'):
             state.wb_temp = max(state.wb_temp - 100, 2000)
             if not state.auto_wb:
                 v4l2_set(state.device, V4L2_WB_TEMP, state.wb_temp)
+            show_toast(f"WB {state.wb_temp}K")
 
         # Auto toggles
         elif key == ord('a'):
@@ -1003,18 +1115,22 @@ def run_gui(state: CameraState, hat=None):
             if not state.auto_focus:
                 state.focus = min(state.focus + FOCUS_STEP_COARSE, state.focus_max)
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
+                show_toast(f"FOCUS {state.focus_pct}%")
         elif key == ord('['):                # [ = focus closer (coarse)
             if not state.auto_focus:
                 state.focus = max(state.focus - FOCUS_STEP_COARSE, FOCUS_MIN)
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
+                show_toast(f"FOCUS {state.focus_pct}%")
         elif key == ord('.'):                # . = fine far
             if not state.auto_focus:
                 state.focus = min(state.focus + FOCUS_STEP_FINE, state.focus_max)
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
+                show_toast(f"FOCUS {state.focus_pct}%")
         elif key == ord(','):                # , = fine near
             if not state.auto_focus:
                 state.focus = max(state.focus - FOCUS_STEP_FINE, FOCUS_MIN)
                 v4l2_set(state.device, V4L2_FOCUS_ABS, state.focus)
+                show_toast(f"FOCUS {state.focus_pct}%")
         elif key == ord('k'):                # K = toggle focus peaking
             state.focus_peaking = not state.focus_peaking
             show_toast("PEAKING ON" if state.focus_peaking else "PEAKING OFF",
@@ -1035,8 +1151,10 @@ def run_gui(state: CameraState, hat=None):
                        COLOR_RED if state.audio_muted else COLOR_GREEN)
         elif key == ord('+') or key == ord('='):   # + = mic gain up
             state.mic_gain_db = min(state.mic_gain_db + 3, 20)
+            show_toast(f"MIC {state.mic_gain_db}dB")
         elif key == ord('-'):                # - = mic gain down
             state.mic_gain_db = max(state.mic_gain_db - 3, -20)
+            show_toast(f"MIC {state.mic_gain_db}dB")
 
         # Output format cycle
         elif key == ord('p'):
@@ -1206,6 +1324,12 @@ def _draw_audio_meters(img, w, h, state):
             # Peak hold tick
             peak_y = rms_to_y(peak)
             cv2.line(img, (x, peak_y), (x + BAR_W, peak_y), (255, 255, 255), 2)
+
+            # CLIP warning text
+            db = 20 * np.log10(max(rms, 1e-6))
+            if db > -6:
+                # Draw "CLIP" above the bar
+                cv2.putText(img, "CLIP", (X_L - 4, BAR_TOP - 20), FONT, 0.4, (0, 0, 255), 1, cv2.LINE_AA)
         else:
             # MUTE stripe
             cv2.line(img, (x, BAR_TOP + BAR_H//2),
@@ -1291,51 +1415,152 @@ def _draw_histogram(img, w, h, gray=None):
 
 
 def _draw_format_menu(img, w, h, state):
-    """Draw a centered list of formats, highlighting the selected one."""
-    menu_w = 300
-    menu_h = len(OUTPUT_FORMATS) * 30 + 20
+    """Draw a centered list of formats with details."""
+    FONT = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 0.6
+    thickness = 1
+
+    # Calculate required width based on longest text
+    max_w = 0
+    for fmt in OUTPUT_FORMATS:
+        label_text = fmt['label']
+        detail_text = f"({fmt['ext']})  {fmt['note']}"
+        full_text = f"{label_text}   {detail_text}"
+        (tw, th), _ = cv2.getTextSize(full_text, FONT, scale, thickness)
+        max_w = max(max_w, tw)
+
+    menu_w = max_w + 80
+    menu_h = len(OUTPUT_FORMATS) * 35 + 30
     x = (w - menu_w) // 2
     y = (h - menu_h) // 2
 
+    # Draw background box
     overlay = img.copy()
-    cv2.rectangle(overlay, (x, y), (x + menu_w, y + menu_h), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.8, img, 0.2, 0, img)
+    cv2.rectangle(overlay, (x, y), (x + menu_w, y + menu_h), (20, 20, 20), -1)
 
-    FONT = cv2.FONT_HERSHEY_SIMPLEX
+    # Draw highlight bar for selected item
+    row_h = 35
+    sel_idx = state.output_format_idx
+    # Calculate top-left of the selected row
+    bar_y1 = y + row_h * sel_idx + 8
+    bar_y2 = y + row_h * (sel_idx + 1) + 5
+    cv2.rectangle(overlay, (x + 2, bar_y1), (x + menu_w - 2, bar_y2), (60, 100, 60), -1)
+
+    cv2.rectangle(overlay, (x, y), (x + menu_w, y + menu_h), (100, 100, 100), 1)
+    cv2.addWeighted(overlay, 0.9, img, 0.1, 0, img)
+
     for i, fmt in enumerate(OUTPUT_FORMATS):
-        color = (0, 255, 0) if i == state.output_format_idx else (180, 180, 180)
-        thickness = 2 if i == state.output_format_idx else 1
-        text = fmt["label"]
-        cv2.putText(img, text, (x + 20, y + 30 * (i + 1)), FONT, 0.7, color, thickness, cv2.LINE_AA)
+        is_selected = (i == state.output_format_idx)
+
+        # Colors: Brighter/Bold for selected, Gray/Normal for others
+        color_label = (255, 255, 255) if is_selected else (200, 200, 200)
+        color_detail = (200, 255, 200) if is_selected else (150, 150, 150)
+        curr_thickness = 2 if is_selected else 1
+
+        py = y + 35 * (i + 1)
+
+        # Draw Label (shifted left slightly since ">" is gone)
+        cv2.putText(img, fmt["label"], (x + 20, py), FONT, scale, color_label, curr_thickness, cv2.LINE_AA)
+
+        # Draw Details (ext + note) to the right of the label
+        (label_w, _), _ = cv2.getTextSize(fmt["label"], FONT, scale, curr_thickness)
+        detail_text = f"({fmt['ext']})  {fmt['note']}"
+        cv2.putText(img, detail_text, (x + 20 + label_w + 20, py), FONT, 0.5, color_detail, 1, cv2.LINE_AA)
 
 
 def _draw_help(img, w, h, font):
-    """Overlay keyboard shortcut reference."""
-    help_lines = [
-        "R          Record / Stop",
-        "E / D      Exposure +/-",
-        "G / F      Gain (ISO) +/-",
-        "W / S      White Balance +/-",
-        "A          Toggle Auto Exposure",
-        "B          Toggle Auto White Balance",
-        "T          Toggle Autofocus (AF/MF)",
-        "] / [      Focus Far / Near  (coarse)",
-        ". / ,      Focus Far / Near  (fine)",
-        "K          Toggle Focus Peaking",
-        "L          Toggle Framing Guides",
-        "J          Toggle Histogram",
-        "M          Mute / Unmute mic",
-        "+ / -      Mic gain +3 / -3 dB",
-        "P          Cycle output format (H.264/H.265/ProRes…)",
-        "H          Toggle this help",
-        "Q / ESC    Quit",
+    """Overlay keyboard shortcut reference in a clean 2-column modal."""
+    # Define columns
+    col1 = [
+        ("CAMERA CONTROL", ""),
+        ("E / D",      "Exposure +/-"),
+        ("G / F",      "Gain (ISO) +/-"),
+        ("W / S",      "White Balance +/-"),
+        ("A / B",      "Auto Exp / Auto WB"),
+        ("", ""),
+        ("FOCUS", ""),
+        ("T",          "Toggle AF / MF"),
+        ("] / [",      "Focus Far / Near"),
+        (". / ,",      "Fine Focus"),
+        ("K",          "Focus Peaking"),
     ]
-    bx, by = 30, h // 2 - (len(help_lines) * 24) // 2
-    for i, line in enumerate(help_lines):
-        cv2.putText(img, line, (bx, by + i * 26),
-                    font, 0.55, (0,0,0), 2, cv2.LINE_AA)
-        cv2.putText(img, line, (bx, by + i * 26),
-                    font, 0.55, (240,240,240), 1, cv2.LINE_AA)
+
+    col2 = [
+        ("SYSTEM & TOOLS", ""),
+        ("R",          "Record / Stop"),
+        ("P",          "Cycle Format"),
+        ("M",          "Mute Mic"),
+        ("+ / -",      "Mic Gain +/-"),
+        ("", ""),
+        ("OVERLAYS", ""),
+        ("L",          "Framing Guides"),
+        ("J",          "Histogram"),
+        ("H",          "Toggle Help"),
+        ("Q / ESC",    "Quit App"),
+    ]
+
+    # Layout constants - dynamic scaling for smaller screens
+    base_h = 540.0
+    scale  = min(1.0, h / base_h)
+
+    BOX_W = int(720 * scale)
+    BOX_H = int(420 * scale)
+    bx = (w - BOX_W) // 2
+    by = (h - BOX_H) // 2
+
+    font_s = 0.55 * scale
+    font_head = 0.7 * scale
+    line_h = int(28 * scale)
+
+    # 1. Draw semi-transparent background
+    overlay = img.copy()
+    cv2.rectangle(overlay, (bx, by), (bx + BOX_W, by + BOX_H), (20, 20, 28), -1)
+    # Header strip
+    cv2.rectangle(overlay, (bx, by), (bx + BOX_W, by + int(40 * scale)), (40, 40, 50), -1)
+    cv2.addWeighted(overlay, 0.92, img, 0.08, 0, img)
+
+    # 2. Draw border
+    cv2.rectangle(img, (bx, by), (bx + BOX_W, by + BOX_H), (100, 100, 100), 1)
+
+    # 3. Draw Title
+    title = "KEYBOARD SHORTCUTS"
+    (tw, th), _ = cv2.getTextSize(title, font, font_head, 2)
+    cv2.putText(img, title, (bx + (BOX_W - tw)//2, by + int(28 * scale)),
+                font, font_head, (220, 220, 220), 2, cv2.LINE_AA)
+
+    # 4. Draw Columns
+    col_w = int(100 * scale)
+    col_x_off = int(120 * scale)
+
+    def draw_col(items, x_start, y_start):
+        y = y_start
+        for key, desc in items:
+            if desc == "":  # Section Header
+                if key:
+                    cv2.putText(img, key, (x_start, y), font, font_s - 0.05, (100, 200, 255), 1, cv2.LINE_AA)
+                y += int(24 * scale)
+            else:
+                # Key (Right aligned in col_w space)
+                (kw, kh), _ = cv2.getTextSize(key, font, font_s, 1)
+                cv2.putText(img, key, (x_start + col_w - kw, y), font, font_s, (220, 220, 220), 1, cv2.LINE_AA)
+                # Description
+                cv2.putText(img, desc, (x_start + col_x_off, y), font, font_s, (180, 180, 180), 1, cv2.LINE_AA)
+                y += line_h
+
+    # Left Column
+    draw_col(col1, bx + int(40 * scale), by + int(80 * scale))
+
+    # Right Column
+    draw_col(col2, bx + int(380 * scale), by + int(80 * scale))
+
+    # Divider line
+    cv2.line(img, (bx + BOX_W//2, by + int(60 * scale)), (bx + BOX_W//2, by + BOX_H - int(30 * scale)), (60, 60, 70), 1)
+
+    # Footer hint
+    footer = "Press H to close"
+    (fw, fh), _ = cv2.getTextSize(footer, font, font_s - 0.1, 1)
+    cv2.putText(img, footer, (bx + (BOX_W - fw)//2, by + BOX_H - int(12 * scale)),
+                font, font_s - 0.1, (120, 120, 120), 1, cv2.LINE_AA)
 
 
 # ─────────────────────────────────────────────
@@ -1401,7 +1626,8 @@ def run_headless(state: CameraState):
                 bar    = "█" * filled + "░" * (width - filled)
                 db     = 20 * (np.log10(max(level, 1e-6)) if NP_OK else -60)
                 col    = "red" if db > -6 else ("yellow" if db > -18 else "green")
-                return f"[{col}]{bar}[/]"
+                suffix = " [bold red]CLIP![/]" if db > -6 else ""
+                return f"[{col}]{bar}[/]{suffix}"
             if state.audio_muted:
                 audio_str = "[bold red]MUTED[/bold red]"
             else:
@@ -1647,6 +1873,7 @@ Examples:
     args = parser.parse_args()
 
     state = CameraState()
+    state.mode   = args.mode
     state.device = args.device
     if args.fps:     state.fps             = args.fps
     if args.res:     state.resolution      = args.res
@@ -1662,6 +1889,9 @@ Examples:
     if args.outdir:  state.output_dir      = Path(args.outdir)
     if args.audio_device: state.audio_device = args.audio_device
     if args.no_audio:     state.audio_enabled = False
+
+    # Ensure we don't overwrite existing clips
+    state.refresh_clip_number()
 
     # Start HAT UI if requested
     hat = None

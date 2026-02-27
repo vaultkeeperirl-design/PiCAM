@@ -70,7 +70,7 @@ try:
     from obsbot_capture import OUTPUT_FORMATS, N_FORMATS
 except ImportError:
     OUTPUT_FORMATS = [{"key":"prores_hq","label":"ProRes HQ","ext":"mov",
-                       "note":"~220Mbps","cpu_warn":False}]
+                       "note":"~220Mbps","est_mbps":220,"cpu_warn":False}]
     N_FORMATS = 1
 
 # ─────────────────────────────────────────────
@@ -494,6 +494,11 @@ class HatUI:
             self._load_fonts()
             self.display.fill(C_BG)
 
+            # Reusable PIL buffers to avoid allocation loop
+            self._canvas = Image.new("RGB", (LCD_W, LCD_H), C_BG)
+            self._draw   = ImageDraw.Draw(self._canvas)
+            self._thumb_border = Image.new("RGB", (42, 32), C_MGRAY)
+
             # Grabber created here but NOT started — the GUI calls
             # grabber.start() after it has its first frame, avoiding conflict
             self.grabber = FrameGrabber(self.state.device)
@@ -863,13 +868,14 @@ class HatUI:
     #  All other pages — HUD page with small live thumbnail
     # ─────────────────────────────────────────────────────────────────
     def _render_page(self, s, page, acc):
-        img  = Image.new("RGB", (LCD_W, LCD_H), C_BG)
-        draw = ImageDraw.Draw(img)
+        # Reuse persistent canvas
+        self._draw.rectangle((0, 0, LCD_W, LCD_H), fill=C_BG)
+        img  = self._canvas
+        draw = self._draw
 
         # ── Live thumbnail: bottom-right 40×30 ───────────────────
         self._paste_thumbnail(img, LCD_W-42, LCD_H-32, 40, 30)
-        # Re-draw after thumbnail paste
-        draw = ImageDraw.Draw(img)
+        # No need to recreate draw object, it remains attached to img
 
         self._top_bar(draw, s, acc)
 
@@ -899,9 +905,14 @@ class HatUI:
         frame = self.grabber.get()
         thumb = frame.resize((w, h), Image.BILINEAR)
         # Thin border
-        border = Image.new("RGB", (w+2, h+2), C_MGRAY)
-        border.paste(thumb, (1, 1))
-        img.paste(border, (x-1, y-1))
+        if w == 40 and h == 30:
+            # Reuse persistent border buffer for standard size
+            self._thumb_border.paste(thumb, (1, 1))
+            img.paste(self._thumb_border, (x-1, y-1))
+        else:
+            border = Image.new("RGB", (w+2, h+2), C_MGRAY)
+            border.paste(thumb, (1, 1))
+            img.paste(border, (x-1, y-1))
 
     # ─── Chrome for non-LIVE pages ────────────────────────────────────
     def _top_bar(self, draw, s, acc):
@@ -953,8 +964,9 @@ class HatUI:
         draw.text((3,y), f"{res}  {s.fps}fps", fill=C_WHITE, font=sm); y+=14
         draw.text((3,y), s.format_label, fill=C_MAGENTA, font=sm); y+=13
         ae = "AE" if s.auto_exp else f"{s.shutter_angle:.0f}°"
-        draw.text((3,y), f"EXP  {ae}   ISO~{s.gain*10}", fill=C_AMBER, font=xs); y+=12
-        wb = "AWB" if s.auto_wb else f"{s.wb_temp}K"
+        gain = s.gain if s.gain is not None else 0
+        draw.text((3,y), f"EXP  {ae}   ISO~{gain*10}", fill=C_AMBER, font=xs); y+=12
+        wb = "AWB" if s.auto_wb else f"{s.wb_temp or 5600}K"
         draw.text((3,y), f"WB   {wb}", fill=C_CYAN, font=xs); y+=12
         af = "AF" if s.auto_focus else f"MF {s.focus_pct}%"
         pk = "  PKG" if getattr(s,'focus_peaking',False) else ""
@@ -962,8 +974,9 @@ class HatUI:
         if not s.audio_enabled:   aud, ac = "No mic", C_MGRAY
         elif s.audio_muted:       aud, ac = "MUTED",  C_RED
         else:
-            sign = "+" if s.mic_gain_db >= 0 else ""
-            aud, ac = f"Mic  {sign}{s.mic_gain_db}dB", C_GREEN
+            mg = s.mic_gain_db if s.mic_gain_db is not None else 0
+            sign = "+" if mg >= 0 else ""
+            aud, ac = f"Mic  {sign}{mg}dB", C_GREEN
         draw.text((3,y), aud, fill=ac, font=xs)
         draw.text((3, LCD_H-22), "K1=REC  K3=format", fill=C_MGRAY, font=xs)
 
@@ -978,8 +991,9 @@ class HatUI:
              C_AMBER if not s.auto_exp else C_MGRAY, outline=C_AMBER if sel_exp else None)
         m = 3+int(0.5*(LCD_W-48)); draw.line([m,y,m,y+8], fill=C_WHITE, width=1)
         y += 12
-        draw.text((3,y), f"ISO  ~{s.gain*10}", fill=g_col, font=sm); y+=12
-        _bar(draw, 3, y, LCD_W-48, 7, s.gain/500,
+        gain = s.gain if s.gain is not None else 0
+        draw.text((3,y), f"ISO  ~{gain*10}", fill=g_col, font=sm); y+=12
+        _bar(draw, 3, y, LCD_W-48, 7, gain/500,
              C_CYAN if sel_gain else C_MGRAY, outline=C_CYAN if sel_gain else None)
         cursor = "▲▼ Shutter" if sel_exp else "▲▼ ISO"
         draw.text((3, LCD_H-22), cursor, fill=C_AMBER if sel_exp else C_CYAN, font=xs)
@@ -989,8 +1003,9 @@ class HatUI:
         y  = 20; xs = self._font_xs; sm = self._font_sm
         draw.text((3,y), "AUTO" if s.auto_wb else "MANUAL",
                   fill=C_GREEN if s.auto_wb else C_WHITE, font=sm); y+=14
-        draw.text((3,y), f"{s.wb_temp} K", fill=C_CYAN, font=self._font_lg); y+=20
-        _bar(draw, 3, y, LCD_W-48, 10, (s.wb_temp-2000)/8000, C_CYAN); y+=11
+        wb = s.wb_temp if s.wb_temp is not None else 5600
+        draw.text((3,y), f"{wb} K", fill=C_CYAN, font=self._font_lg); y+=20
+        _bar(draw, 3, y, LCD_W-48, 10, (wb-2000)/8000, C_CYAN); y+=11
         for k, lbl in [(3200,"3.2"),(5600,"D"),(6500,"6.5")]:
             mx = 3+int(((k-2000)/8000)*(LCD_W-48))
             draw.line([mx,y-11,mx,y-1], fill=C_WHITE, width=1)
@@ -1013,7 +1028,9 @@ class HatUI:
             tx = 3+int(frac*(LCD_W-48))
             draw.line([tx,y+14,tx,y+18], fill=C_MGRAY, width=1)
         y+=22
-        draw.text((3,y), f"val {s.focus}/{s.focus_max}", fill=C_MGRAY, font=xs); y+=12
+        f = s.focus if s.focus is not None else 0
+        fm = s.focus_max if s.focus_max is not None else 255
+        draw.text((3,y), f"val {f}/{fm}", fill=C_MGRAY, font=xs); y+=12
         pk_on = getattr(s,'focus_peaking',False)
         draw.text((3,y), f"Peaking  {'ON ●' if pk_on else 'OFF'}",
                   fill=C_GREEN if pk_on else C_MGRAY, font=xs)
@@ -1065,12 +1082,13 @@ class HatUI:
         draw.text((14,y),"-60",fill=C_MGRAY,font=xs)
         draw.text((45,y),"-12",fill=C_MGRAY,font=xs)
         draw.text((60,y),"-6", fill=C_MGRAY,font=xs); y+=11
-        sign = "+" if s.mic_gain_db >= 0 else ""
-        draw.text((3,y), f"Gain  {sign}{s.mic_gain_db} dB", fill=C_WHITE, font=sm); y+=12
+        mg = s.mic_gain_db if s.mic_gain_db is not None else 0
+        sign = "+" if mg >= 0 else ""
+        draw.text((3,y), f"Gain  {sign}{mg} dB", fill=C_WHITE, font=sm); y+=12
         mid = (LCD_W-50)//2
         draw.rectangle([3,y,LCD_W-48,y+8], fill=C_BAR_BG)
         draw.line([3+mid,y,3+mid,y+8], fill=C_MGRAY, width=1)
-        norm   = (s.mic_gain_db+20)/40
+        norm   = (mg+20)/40
         fill_x = int(norm*(LCD_W-50))
         if norm >= 0.5:
             draw.rectangle([3+mid,y,3+fill_x,y+8], fill=C_GREEN)
@@ -1132,16 +1150,27 @@ class HatUI:
             draw.text((3,y), f"FREE  {free_gb:.1f}/{total_gb:.0f} GB", fill=C_WHITE, font=xs); y+=11
             _bar(draw, 3, y, LCD_W-50, 7, used_pct,
                  C_RED if used_pct>0.9 else (C_AMBER if used_pct>0.7 else C_GREEN)); y+=10
-            # Estimate remaining time using bitrate from format note (e.g. "~50Mbps")
-            fmt  = OUTPUT_FORMATS[s.output_format_idx]
-            note = fmt.get("note", "")
-            try:
-                mbps = int([w for w in note.replace("~","").split() if "Mbps" in w][0].replace("Mbps",""))
-            except Exception:
-                mbps = 50
-            if "720" in s.resolution: mbps = max(1, mbps//3)
-            elif "1080" in s.resolution: mbps = max(1, mbps//2)
-            mins = int(free_gb*8000/mbps) if mbps else 0
+
+            # Use centralized logic if available
+            if hasattr(s, "remaining_storage_info"):
+                _, mins = s.remaining_storage_info
+            else:
+                # Robust fallback logic
+                fmt  = OUTPUT_FORMATS[s.output_format_idx]
+                mbps = fmt.get("est_mbps")
+                # Fallback to note parsing only if est_mbps is missing
+                if not mbps:
+                    note = fmt.get("note", "")
+                    try:
+                        mbps = int([w for w in note.replace("~","").split() if "Mbps" in w][0].replace("Mbps",""))
+                    except Exception:
+                        mbps = 50
+
+                if "720" in str(s.resolution): mbps = max(1, mbps//3)
+                elif "1080" in str(s.resolution): mbps = max(1, mbps//2)
+
+                mins = int((free_gb*8000/mbps)/60) if mbps else 0
+
             h,m  = divmod(mins,60)
             draw.text((3,y), f"{h}h {m:02d}m remaining", fill=C_MGRAY, font=xs)
         except Exception:
@@ -1153,7 +1182,7 @@ class HatUI:
 #  Standalone test
 # ─────────────────────────────────────────────
 class _MockState:
-    device="/dev/video0"; resolution="3840x2160"; fps=30
+    mode="gui"; device="/dev/video0"; resolution="3840x2160"; fps=30
     exposure=500; gain=100; wb_temp=5600
     auto_wb=False; auto_exp=False; auto_focus=True
     focus=128; focus_max=255; focus_peaking=False

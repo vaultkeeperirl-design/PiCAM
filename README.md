@@ -27,9 +27,16 @@ live audio metering, and a **Waveshare 1.44" LCD HAT** viewfinder.
 
 ## Architecture
 
-- **`obsbot_capture.py`**: Core logic, FFmpeg process management, and OpenCV GUI. Handles `CameraState` which stores all settings.
-- **`hat_ui.py`**: Runs in a separate thread, handling the LCD display (SPI) and joystick input (GPIO). It reads from and updates the shared `CameraState`.
-- **`install.sh`**: One-time setup script for dependencies and system configuration.
+- **`obsbot_capture.py`**: The main application controller. It manages:
+  - **Main Thread**: Handles OpenCV GUI (HDMI preview) or Rich TUI (Headless), keyboard input, and the FFmpeg recording process.
+  - **`CameraState`**: A shared data class acting as the source of truth for all settings (exposure, focus, format).
+- **`hat_ui.py`**: Run as a daemon thread. It manages:
+  - **SPI Display**: Renders the 128x128 UI at ~15fps.
+  - **GPIO Input**: Polls joystick and buttons for interaction.
+  - **`FrameGrabber`**: A helper that safely extracts frames from the main OpenCV loop for the HAT's live preview.
+- **`install.sh`**: One-time setup script that configures system boot parameters (USB bandwidth, SPI, GPIO) and installs dependencies.
+
+**Data Flow:** `CameraState` is the single source of truth. The GUI loop (OpenCV) and HAT loop (daemon) both read/write to it independently. FFmpeg is launched as a subprocess reading from `CameraState` config, while the GUI temporarily releases the camera resource.
 
 ---
 
@@ -67,15 +74,15 @@ The `install.sh` script performs the following critical system changes:
 
 Press **P** (keyboard) or use the **FORMAT page** on the HAT to cycle between:
 
-| # | Format | Container | ~Bitrate 4K | Notes |
+| CLI Key | Format | Container | ~Bitrate 4K | Notes |
 |---|---|---|---|---|
-| 1 | **H.264 High** | `.mp4` | ~50 Mbps | ★ Best for Filmora — just drag & drop |
-| 2 | **H.264 Std** | `.mp4` | ~20 Mbps | Filmora, smaller files |
-| 3 | **H.265 / HEVC** | `.mp4` | ~25 Mbps | Efficient 4K, Filmora compatible |
-| 4 | **MKV H.264** | `.mkv` | ~50 Mbps | Flexible container, Filmora compatible |
-| 5 | **ProRes HQ** | `.mov` | ~220 Mbps | Maximum quality, large files |
-| 6 | **ProRes LT** | `.mov` | ~100 Mbps | Edit-ready, reasonable size |
-| 7 | **ProRes Proxy** | `.mov` | ~40 Mbps | Offline / rough cut |
+| `h264_high` | **H.264 High** | `.mp4` | ~50 Mbps | ★ Best for Filmora — just drag & drop |
+| `h264_std` | **H.264 Std** | `.mp4` | ~20 Mbps | Filmora, smaller files |
+| `h265` | **H.265 / HEVC** | `.mp4` | ~25 Mbps | Efficient 4K, Filmora compatible |
+| `mkv_h264` | **MKV H.264** | `.mkv` | ~50 Mbps | Flexible container, Filmora compatible |
+| `prores_hq` | **ProRes HQ** | `.mov` | ~220 Mbps | Maximum quality, large files |
+| `prores_lt` | **ProRes LT** | `.mov` | ~100 Mbps | Edit-ready, reasonable size |
+| `prores_proxy` | **ProRes Proxy** | `.mov` | ~40 Mbps | Offline / rough cut |
 
 > **Pi 5 note:** H.264 and H.265 are software-encoded (no hardware encoder for
 > arbitrary V4L2 input). At 4K they push the CPU hard — if you see dropped frames,
@@ -89,9 +96,6 @@ python3 obsbot_capture.py --format h264_high     # MP4 H.264 — Filmora default
 python3 obsbot_capture.py --format h265          # MP4 HEVC
 python3 obsbot_capture.py --format prores_hq     # ProRes HQ .mov
 ```
-
-Available `--format` values: `h264_high`, `h264_std`, `h265`, `mkv_h264`,
-`prores_hq`, `prores_lt`, `prores_proxy`
 
 ---
 
@@ -161,7 +165,7 @@ automatically using the bitrate of the selected format.
 python3 obsbot_capture.py [OPTIONS]
 
   --mode        gui | headless | diag      (default: gui)
-  --hat                                    Enable HAT viewfinder
+  --hat                                    Enable HAT viewfinder & controls
   --device      /dev/videoN                (default: /dev/video0)
   --fps         24|25|30|50|60             (default: 30)
   --res         3840x2160|1920x1080|1280x720
@@ -207,6 +211,12 @@ For better audio use any USB mic or audio interface with `--audio-device hw:X,0`
 
 ## Troubleshooting
 
+**General Diagnostics**
+Run the built-in diagnostic tool to check camera, audio, and dependencies:
+```bash
+python3 obsbot_capture.py --mode diag
+```
+
 **H.264/H.265 dropped frames at 4K**
 Switch to 1080p: `--res 1920x1080`, or use ProRes which the Pi handles easily.
 
@@ -235,6 +245,10 @@ use `--mode gui` on HDMI for preview instead.
 Filmora needs H.264 or H.265 — use `--format h264_high` or `--format h265`.
 If Filmora can't find the file make sure you're pointing it at your `outdir`.
 
+**error: externally-managed-environment**
+This happens on Raspberry Pi OS Bookworm when running `pip install` globally.
+Use `--break-system-packages` (as shown in the setup guide) or use a virtual environment.
+
 ---
 
 ## Output Files
@@ -246,5 +260,84 @@ If Filmora can't find the file make sure you're pointing it at your `outdir`.
   CLIP_20250220_0003.mkv    ← MKV H.264
 ```
 
-Settings (exposure, WB, focus, gain, selected format) persist between sessions
-in `~/.obsbot_cinepi.json`.
+Settings (exposure, WB, focus, gain, format, FPS, mic gain) persist between
+sessions in `~/.obsbot_cinepi.json`.
+
+> **Note:** Resolution is **NOT** persisted. It always defaults to 4K (`3840x2160`).
+> To use 1080p, you must pass `--res 1920x1080` every time.
+
+---
+
+## 🛠️ Development & Contributing
+
+We welcome contributions! Please follow these steps to set up your development environment.
+
+### Development Setup (Raspberry Pi)
+
+> **Recommended:** Use `bash install.sh` to handle all dependencies and system config automatically.
+> Follow these steps only for manual setup.
+
+1.  **Install System Dependencies** (Raspberry Pi OS Bookworm):
+    ```bash
+    sudo apt install -y ffmpeg libx264-dev libx265-dev v4l-utils \
+      python3-pip python3-dev libopencv-dev python3-opencv python3-numpy
+    ```
+
+2.  **Install GPIO shim (Pi 5 requirement):**
+    On Pi 5, `RPi.GPIO` is replaced by `lgpio`:
+    ```bash
+    sudo apt remove python3-rpi.gpio
+    sudo apt install python3-rpi-lgpio python3-lgpio
+    ```
+
+3.  **Install Python Dependencies**:
+    ```bash
+    pip3 install -r requirements.txt --break-system-packages
+    ```
+    *Note: The `--break-system-packages` flag is required on Raspberry Pi OS Bookworm to install packages globally (matching `install.sh`). If you prefer a virtual environment, see the "Non-Pi" instructions below.*
+
+### Development Setup (Local / Non-Pi)
+
+You can run unit tests and linting on macOS, Windows, or standard Linux without the camera hardware.
+
+1.  **System Dependencies (Linux Only):**
+    If developing on Linux, install audio libraries required by `sounddevice`:
+    ```bash
+    sudo apt install libasound2-dev portaudio19-dev
+    ```
+    *(macOS/Windows users can skip this step as binaries are included in the wheel)*
+
+2.  **Create a virtual environment:**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+
+3.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    pip install pylint  # For linting
+    ```
+    *Note: `spidev` is Linux-only and will be skipped automatically on macOS/Windows.*
+
+### Running Tests
+
+Run the unit test suite to verify changes (works without hardware):
+
+```bash
+python3 -m unittest discover tests
+```
+
+### Code Style
+
+-   Keep logic simple and readable.
+-   `obsbot_capture.py` is the single-file entry point to minimize import complexity.
+-   Use `black` or similar for formatting if possible.
+
+### Static Analysis
+
+Ensure code quality by running pylint (enforced in CI):
+
+```bash
+pylint obsbot_capture.py hat_ui.py
+```
